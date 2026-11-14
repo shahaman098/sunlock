@@ -51,6 +51,21 @@ several candidate regions across a season is an afternoon of work per question.
 
 The map applies the same test at every pixel of a 384 × 384 grid.
 
+### Research
+
+Two documents, both written from the shipped code and public data:
+
+- **[research/REPORT.md](research/REPORT.md)** (PDF: `research/sunlock-report.pdf`) — a
+  reproducibility study of how sampling and visibility conventions change lunar polar
+  illumination estimates. Includes the JPL verification, the 36.8–94.4% sampling spread, and
+  the reconciliation with the published literature.
+- **[research/LITERATURE.md](research/LITERATURE.md)** — annotated review with quoted
+  methodology and numbers from Mazarico 2011, Speyerer & Robinson 2013, Gläser 2014/2017 and
+  Barker 2021.
+
+Rebuild the PDF with `python3 research/build-pdf.py research/REPORT.md research/report.html`
+then print the HTML to PDF.
+
 ### Benchmarks
 
 See [BENCHMARKS.md](BENCHMARKS.md) for the full set: agreement with JPL Horizons on geometry
@@ -59,8 +74,10 @@ position sensitivity (±250 m → σ 0.04%) and horizon-sampling sensitivity (1.
 
 ```bash
 cd web
-npm run verify   # JPL Horizons: geometry + frame
-npm run bench    # sensitivity of the illumination numbers
+npm run verify     # JPL Horizons: geometry + frame
+npm run bench      # disc, position, azimuth sensitivity
+npm run bench:ray  # sampling-interval study
+npm run bench:conv # convergence + disc-criterion study
 ```
 
 ### Independent verification
