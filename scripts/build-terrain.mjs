@@ -231,6 +231,38 @@ for (let y = 0; y < G; y++) {
 fs.writeFileSync(path.join(OUT, "shadowgrid.bin"), Buffer.from(horizon.buffer));
 console.error("wrote shadowgrid.bin");
 
+// ------------------------------------------------------- elevation grid (custom points)
+// 1024^2 signed metres, bilinear-block averaged. Used to derive a horizon profile at any
+// point the user clicks, so analysis is not limited to the preset regions.
+const EG = 1024;
+const egStep = N / EG;
+const egrid = new Int16Array(EG * EG);
+{
+  const block = Math.max(1, Math.floor(egStep));
+  for (let y = 0; y < EG; y++) {
+    for (let x = 0; x < EG; x++) {
+      const gx = (x + 0.5) * egStep;
+      const gy = (y + 0.5) * egStep;
+      if (Math.hypot(gx - CENTER, gy - CENTER) > COVER) { egrid[y * EG + x] = 0; continue; }
+      let sum = 0, n = 0;
+      const x0 = Math.floor(x * egStep), y0 = Math.floor(y * egStep);
+      for (let dy = 0; dy < block; dy++) {
+        const yy = y0 + dy;
+        if (yy >= N) break;
+        for (let dx = 0; dx < block; dx++) {
+          const xx = x0 + dx;
+          if (xx >= N) break;
+          sum += dem[yy * N + xx]; n++;
+        }
+      }
+      egrid[y * EG + x] = n ? Math.round((sum / n) * M_PER_DN) : 0;
+    }
+  }
+}
+fs.writeFileSync(path.join(OUT, "elevgrid.bin"), Buffer.from(egrid.buffer));
+console.error(`wrote elevgrid.bin (${EG}x${EG}, ${((EG * EG * 2) / 1e6).toFixed(1)} MB)`);
+console.error("wrote shadowgrid.bin");
+
 // ------------------------------------------------------------ sites
 // Centres of NASA's Artemis III candidate landing regions (published 2022 list).
 const SITES = [

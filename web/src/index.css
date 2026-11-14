@@ -110,9 +110,10 @@ body {
 .map-overlay {
   position: absolute; inset: 0;
   width: 100%; height: 100%;
+  pointer-events: none;
 }
 
-.marker { cursor: pointer; }
+.marker { cursor: pointer; pointer-events: auto; }
 .pin { fill: rgba(255,255,255,0.55); stroke: rgba(0,0,0,0.6); stroke-width: 0.25; }
 .pin-active { fill: #ffffff; stroke: var(--sun); stroke-width: 0.5; }
 .pin-halo { fill: none; stroke: rgba(242,180,92,0.55); stroke-width: 0.4; }
@@ -144,6 +145,9 @@ body {
 .dot-dark { background: #0b1220; border: 1px solid #2a3550; margin-left: 6px; }
 
 .sunmeta { margin-left: 8px; color: #6f82a0; font-variant-numeric: tabular-nums; }
+.map-hint { margin-left: 10px; color: #5f7391; font-size: 10.5px; }
+.custom-ring { fill: none; stroke: #7aa2ff; stroke-width: 0.7; }
+.custom-cross { stroke: #7aa2ff; stroke-width: 0.55; }
 
 /* ---------- scrubber ---------- */
 .scrubber { margin-top: 14px; padding: 0 4px; }
@@ -416,3 +420,18 @@ input[type="range"]::-webkit-slider-thumb {
 .w-when { font-variant-numeric: tabular-nums; }
 .w-len { text-align: right; color: var(--sun-soft); font-variant-numeric: tabular-nums; }
 .w-margin { text-align: right; color: #6f82a0; font-variant-numeric: tabular-nums; font-size: 10.5px; }
+
+.clear-custom {
+  margin-left: 10px;
+  background: transparent;
+  border: 1px solid #2a3a52;
+  border-radius: 6px;
+  color: #8fa2bd;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  cursor: pointer;
+  vertical-align: middle;
+}
+.clear-custom:hover { color: #dfe8f6; border-color: #3d5372; }

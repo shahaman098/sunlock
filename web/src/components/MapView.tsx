@@ -12,6 +12,8 @@ type Props = {
   selectedId: string;
   onSelect: (id: string) => void;
   sky: Sky | null;
+  onPick?: (u: { x: number; y: number }) => void;
+  custom?: { lat: number; lon: number } | null;
 };
 
 type Placed = { site: Site; x: number; y: number; lx: number; ly: number; anchor: "start" | "end" };
@@ -66,7 +68,7 @@ function layout(sites: Site[]): Placed[] {
   return out;
 }
 
-export default function MapView({ hillshade, field, shadow, sites, selectedId, onSelect, sky }: Props) {
+export default function MapView({ hillshade, field, shadow, sites, selectedId, onSelect, sky, onPick, custom }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const overlay = useMemo(() => {
@@ -109,9 +111,34 @@ export default function MapView({ hillshade, field, shadow, sites, selectedId, o
 
   return (
     <div className="map-wrap">
-      <canvas ref={canvasRef} width={SIZE} height={SIZE} className="map-canvas" aria-label="Sunlit terrain map of the lunar south pole" />
+      <canvas
+        ref={canvasRef}
+        width={SIZE}
+        height={SIZE}
+        className="map-canvas"
+        aria-label="Sunlit terrain map of the lunar south pole. Click anywhere to analyse that point."
+        onClick={(e) => {
+          if (!onPick) return;
+          const rect = e.currentTarget.getBoundingClientRect();
+          const nx = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+          const ny = ((e.clientY - rect.top) / rect.height) * 2 - 1;
+          onPick({ x: nx, y: ny });
+        }}
+      />
 
-      <svg className="map-overlay" viewBox="0 0 100 100" preserveAspectRatio="none">
+      <svg className="map-overlay" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden>
+        {custom && (() => {
+          const p = projectToUnit(custom.lat, custom.lon);
+          const cx = ((p.x + 1) / 2) * 100;
+          const cy = ((p.y + 1) / 2) * 100;
+          return (
+            <g className="custom-pin">
+              <circle cx={cx} cy={cy} r="2.6" className="custom-ring" />
+              <line x1={cx - 3.6} y1={cy} x2={cx + 3.6} y2={cy} className="custom-cross" />
+              <line x1={cx} y1={cy - 3.6} x2={cx} y2={cy + 3.6} className="custom-cross" />
+            </g>
+          );
+        })()}
         {placed.map(({ site, x, y, lx, ly, anchor }) => {
           const active = site.id === selectedId;
           return (
@@ -150,6 +177,7 @@ export default function MapView({ hillshade, field, shadow, sites, selectedId, o
       <div className="map-legend">
         <span className="dot dot-lit" /> sunlit
         <span className="dot dot-dark" /> shadowed
+        <span className="map-hint">click the terrain to analyse any point</span>
       </div>
     </div>
   );

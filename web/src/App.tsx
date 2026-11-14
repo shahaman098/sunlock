@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import MapView from "./components/MapView";
 import SkyView from "./components/SkyView";
 import TimelineStrip from "./components/TimelineStrip";
-import { buildShadowField, loadTerrain, computeShadow, type ShadowField, type TerrainMeta } from "./lib/terrain";
+import { buildShadowField, loadTerrain, computeShadow, customHorizon, unprojectFromUnit, type ElevationGrid, type ShadowField, type TerrainMeta } from "./lib/terrain";
 import { buildSkies, commWindows, findWindows, siteSeries, statsFor, upcomingWindows, type Sample, type SiteStats } from "./lib/analysis";
 import { skyAt, readSite, siteBasis, lookAngles } from "./lib/selene";
 import { arrayPowerPerM2, batteryWh, energyWh, fmtEnergy, fmtPower, type ArrayMode } from "./lib/power";
@@ -36,13 +36,16 @@ export default function App() {
   const [arrayMode, setArrayMode] = useState<ArrayMode>("tracking");
   const [error, setError] = useState<string | null>(null);
   const [verify, setVerify] = useState<{ epochs: number; maxSunDeg: number; maxEarthDeg: number; generated: string } | null>(null);
+  const [elevation, setElevation] = useState<ElevationGrid | null>(null);
+  const [customSite, setCustomSite] = useState<import("./lib/selene").Site | null>(null);
 
   useEffect(() => {
     let alive = true;
     loadTerrain()
-      .then(({ meta, shadows }) => {
+      .then(({ meta, shadows, elevation }) => {
         if (!alive) return;
         setMeta(meta);
+        setElevation(elevation);
         setField(buildShadowField(meta, shadows));
         const img = new Image();
         img.onload = () => alive && setHillshade(img);
@@ -68,10 +71,42 @@ export default function App() {
     return new Map(meta.sites.map((s) => [s.id, statsFor(series.get(s.id)!, STEP_MIN)]));
   }, [meta, series]);
 
-  const sites = meta?.sites ?? [];
-  const selected = sites.find((s) => s.id === selectedId) ?? sites[0];
-  const selSeries = selected ? series.get(selected.id) ?? [] : [];
-  const selStats = selected ? stats.get(selected.id) : undefined;
+  const officialSites = meta?.sites ?? [];
+  const sites = customSite ? [...officialSites, customSite] : officialSites;
+  const selected = sites.find((s) => s.id === selectedId) ?? officialSites[0];
+
+  const customSeries = useMemo(
+    () => (customSite ? siteSeries(customSite, skies) : []),
+    [customSite, skies]
+  );
+  const customStats = useMemo(
+    () => (customSite && customSeries.length ? statsFor(customSeries, STEP_MIN) : undefined),
+    [customSite, customSeries]
+  );
+
+  const selSeries = selected
+    ? selected.id === "custom" ? customSeries : series.get(selected.id) ?? []
+    : [];
+  const selStats = selected
+    ? selected.id === "custom" ? customStats : stats.get(selected.id)
+    : undefined;
+
+  const pickPoint = (u: { x: number; y: number }) => {
+    if (!elevation) return;
+    const { lat, lon, inside } = unprojectFromUnit(u);
+    if (!inside) return;
+    const { horizon, elevationM } = customHorizon(elevation, lat, lon);
+    setCustomSite({
+      id: "custom",
+      name: "Custom point",
+      lat: Number(lat.toFixed(3)),
+      lon: Number(lon.toFixed(3)),
+      elevationM,
+      blurb: "Picked on the map. Horizon ray-marched on the 1024² elevation grid (about 600 m per pixel), not the full 80 m model used for the preset regions.",
+      horizonDeg: horizon,
+    });
+    setSelectedId("custom");
+  };
 
   const currentSky = useMemo(() => skyAt(new Date(currentMs)), [currentMs]);
   const shadow = useMemo(() => (field ? computeShadow(field, currentSky) : null), [field, currentSky]);
@@ -110,7 +145,7 @@ export default function App() {
   const altPerDay = altTotal / DAYS;
   const battery = selStats ? batteryWh(selStats.longestDarkH, 100) : 0;
 
-  const ranked = [...sites].sort((a, b) => (stats.get(b.id)?.score ?? 0) - (stats.get(a.id)?.score ?? 0));
+  const ranked = [...officialSites].sort((a, b) => (stats.get(b.id)?.score ?? 0) - (stats.get(a.id)?.score ?? 0));
 
   return (
     <div className="app">
@@ -140,6 +175,8 @@ export default function App() {
             selectedId={selectedId}
             onSelect={setSelectedId}
             sky={currentSky}
+            onPick={pickPoint}
+            custom={customSite}
           />
           <div className="scrubber">
             <div className="scrub-head">
@@ -174,7 +211,14 @@ export default function App() {
         <aside className="side">
           <div className="card site-card">
             <div className="card-head">
-              <h2>{selected?.name ?? "—"}</h2>
+              <h2>
+                {selected?.name ?? "—"}
+                {selected?.id === "custom" && (
+                  <button className="clear-custom" onClick={() => { setCustomSite(null); setSelectedId("peak-shackleton"); }}>
+                    clear
+                  </button>
+                )}
+              </h2>
               <span className="coord">
                 {selected ? `${Math.abs(selected.lat).toFixed(2)}°S ${selected.lon.toFixed(1)}°E` : ""}
               </span>

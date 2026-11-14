@@ -31,6 +31,8 @@ several candidate regions across a season is an afternoon of work per question.
 - **Terrain-driven shadow map.** Scrub time and the shadow pattern across the entire pole is
   recomputed from the elevation model, not played back from a texture.
 - **Nine candidate regions**, each optimised to its best local high ground within the region.
+- **Click anywhere** on the map and that point is analysed with the same horizon test, using a
+  1024² elevation grid (~600 m/px) shipped to the browser.
 - **Four decision numbers per site:** sunlight fraction, longest continuous darkness,
   direct-to-Earth visibility, surface elevation.
 - **Window finder.** Ranked, non-overlapping landing windows for a chosen mission length.
@@ -75,7 +77,8 @@ magnitude below the 80 m terrain resolution. Output is committed at
 ## Limitations
 
 No atmospheric refraction, no thermal or power-system model, no terrain self-shadowing between
-distant peaks, no physical libration, 80 m terrain resolution. This is a planning aid for
+distant peaks, no physical libration, 80 m terrain resolution. Custom clicked points are ray-marched
+on the 1024² grid (~600 m/px), which is coarser than the 80 m model used for the preset regions. This is a planning aid for
 comparison and intuition, not a flight-qualified analysis tool.
 
 ## Run it

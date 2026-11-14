@@ -29,17 +29,79 @@ export function projectToUnit(lat: number, lon: number) {
   return { x: (x - c) / (GRID / 2), y: (y - c) / (GRID / 2) };
 }
 
+export type ElevationGrid = {
+  size: number;
+  pixM: number;
+  data: Int16Array; // metres
+};
+
 export async function loadTerrain(): Promise<{
   meta: TerrainMeta;
   shadows: Uint8Array;
+  elevation: ElevationGrid;
 }> {
-  const [metaRes, shadowRes] = await Promise.all([
+  const [metaRes, shadowRes, elevRes] = await Promise.all([
     fetch(`${import.meta.env.BASE_URL}terrain/sites.json`),
     fetch(`${import.meta.env.BASE_URL}terrain/shadowgrid.bin`),
+    fetch(`${import.meta.env.BASE_URL}terrain/elevgrid.bin`),
   ]);
   const meta: TerrainMeta = await metaRes.json();
   const buf = await shadowRes.arrayBuffer();
-  return { meta, shadows: new Uint8Array(buf) };
+  const elevBuf = await elevRes.arrayBuffer();
+  return {
+    meta,
+    shadows: new Uint8Array(buf),
+    elevation: { size: 1024, pixM: (GRID * PIX_M) / 1024, data: new Int16Array(elevBuf) },
+  };
+}
+
+/** Convert normalised map coordinates (-1..1, pole-centred) back to lat/lon. */
+export function unprojectFromUnit(u: { x: number; y: number }) {
+  const gx = u.x * (GRID / 2) + (GRID - 1) / 2;
+  const gy = u.y * (GRID / 2) + (GRID - 1) / 2;
+  const c = (GRID - 1) / 2;
+  const dx = gx - c;
+  const dy = gy - c;
+  const rM = Math.hypot(dx, dy) * PIX_M;
+  const colat = 2 * Math.atan(rM / (2 * R_MOON));
+  const lat = -(90 - colat / (Math.PI / 180));
+  let lon = (Math.atan2(dx, -dy) * 180) / Math.PI;
+  if (lon < 0) lon += 360;
+  return { lat, lon, inside: rM <= 3800 * PIX_M };
+}
+
+/** Terrain horizon at an arbitrary point, ray-marched on the 1024^2 elevation grid. */
+export function customHorizon(grid: ElevationGrid, lat: number, lon: number) {
+  const { size, pixM, data } = grid;
+  const p = projectToGrid(lat, lon);
+  const gx = (p.x / GRID) * size;
+  const gy = (p.y / GRID) * size;
+  const idx = (x: number, y: number) => {
+    const xi = Math.round(x), yi = Math.round(y);
+    if (xi < 0 || yi < 0 || xi >= size || yi >= size) return null;
+    return data[yi * size + xi];
+  };
+  const e0 = idx(gx, gy);
+  if (e0 === null) return { horizon: new Array(360).fill(0), elevationM: 0, inside: false };
+
+  const R = 1737400;
+  const horizon: number[] = [];
+  for (let a = 0; a < 360; a++) {
+    const ang = ((a - lon) * Math.PI) / 180;
+    // image-space direction matching geographic azimuth a
+    const dx = Math.sin(ang);
+    const dy = Math.cos(ang);
+    let best = -1e9;
+    for (let k = 1; k <= 100; k++) {
+      const h = idx(gx + dx * k, gy + dy * k);
+      if (h === null) break;
+      const d = k * pixM;
+      const slope = (h - e0 - (d * d) / (2 * R)) / d;
+      if (slope > best) best = slope;
+    }
+    horizon.push(best === -1e9 ? 0 : (Math.atan(best) * 180) / Math.PI);
+  }
+  return { horizon, elevationM: Math.round(e0), inside: true };
 }
 
 export type ShadowField = {
