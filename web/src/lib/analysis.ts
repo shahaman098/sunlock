@@ -118,31 +118,44 @@ export function findWindows(
   skies: Sky[],
   stepMin: number,
   windowDays: number,
-  limit = 6
+  limit = 4
 ): Window[] {
   const stepMs = stepMin * 60000;
   const span = Math.round((windowDays * 86400000) / stepMs);
   if (span >= skies.length) return [];
   const samples = siteSeries(site, skies);
-  const out: Window[] = [];
 
-  for (let i = 0; i + span < samples.length; i += Math.max(1, Math.round(6 * 60 / stepMin))) {
-    let lit = 0, comm = 0;
-    for (let j = i; j < i + span; j++) {
-      if (samples[j].lit) lit++;
-      if (samples[j].comm) comm++;
-    }
-    const illumPct = (lit / span) * 100;
-    const commPct = (comm / span) * 100;
-    out.push({
+  // Precompute lit/comm counts with a sliding window so long searches stay cheap.
+  const stride = Math.max(1, Math.round(6 * 60 / stepMin));
+  const raw: Window[] = [];
+  const prefixLit = new Float64Array(samples.length + 1);
+  const prefixComm = new Float64Array(samples.length + 1);
+  for (let i = 0; i < samples.length; i++) {
+    prefixLit[i + 1] = prefixLit[i] + (samples[i].lit ? 1 : 0);
+    prefixComm[i + 1] = prefixComm[i] + (samples[i].comm ? 1 : 0);
+  }
+
+  for (let i = 0; i + span < samples.length; i += stride) {
+    const illumPct = ((prefixLit[i + span] - prefixLit[i]) / span) * 100;
+    const commPct = ((prefixComm[i + span] - prefixComm[i]) / span) * 100;
+    raw.push({
       start: samples[i].t,
       illumPct,
       commPct,
       score: scoreOf(illumPct, commPct, scoreDark(samples, i, i + span) * (stepMin / 60), 0.6),
     });
   }
-  out.sort((a, b) => b.score - a.score || b.illumPct - a.illumPct);
-  return out.slice(0, limit);
+
+  // Greedy pick: highest score first, but never return overlapping windows.
+  raw.sort((a, b) => b.score - a.score || b.illumPct - a.illumPct);
+  const windowMs = windowDays * 86400000;
+  const picked: Window[] = [];
+  for (const w of raw) {
+    if (picked.some((p) => Math.abs(p.start - w.start) < windowMs)) continue;
+    picked.push(w);
+    if (picked.length >= limit) break;
+  }
+  return picked.sort((a, b) => a.start - b.start);
 }
 
 function scoreDark(samples: Sample[], from: number, to: number) {
