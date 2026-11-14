@@ -397,7 +397,10 @@ export default function App() {
               Terrain: NASA <b>LRO LOLA</b> gridded elevation model <code>LDEM_80S_80M</code> (PDS Geosciences
               Node, LRO-L-LOLA-4-GDR-V1.0), 80 m/pixel, south polar stereographic, referenced to a 1737.4 km
               sphere. The local horizon at each site is ray-marched over 360 azimuths for up to 64 km,
-              with the lunar curvature drop subtracted.
+              with the lunar curvature drop subtracted, sampling every two pixels with nearest-neighbour
+              lookup. That sampling convention is stated deliberately: illumination at a marginal site is
+              sensitive to it (see BENCHMARKS.md), so the percentage is a reproducible convention rather
+              than a converged physical value.
             </p>
             <p>
               Ephemeris: Sun and Earth vectors from <b>Astronomy Engine</b> (VSOP87/ELP-based), rotated into

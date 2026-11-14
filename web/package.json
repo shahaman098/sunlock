@@ -9,7 +9,8 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "verify": "tsc --ignoreConfig src/lib/selene.ts --outDir .build --module esnext --target es2022 --moduleResolution bundler --skipLibCheck && node scripts/verify-horizons.mjs",
-    "bench": "tsc --ignoreConfig src/lib/selene.ts src/lib/analysis.ts --outDir .build --module esnext --target es2022 --moduleResolution bundler --skipLibCheck && sed -i '' 's|from \\\"./selene\\\"|from \\\"./selene.js\\\"|' .build/analysis.js && node scripts/benchmark.mjs"
+    "bench": "tsc --ignoreConfig src/lib/selene.ts src/lib/analysis.ts --outDir .build --module esnext --target es2022 --moduleResolution bundler --skipLibCheck && sed -i '' 's|from \\\"./selene\\\"|from \\\"./selene.js\\\"|' .build/analysis.js && node scripts/benchmark.mjs",
+    "bench:ray": "tsc --ignoreConfig src/lib/selene.ts src/lib/analysis.ts --outDir .build --module esnext --target es2022 --moduleResolution bundler --skipLibCheck && sed -i '' 's|from \\\"./selene\\\"|from \\\"./selene.js\\\"|' .build/analysis.js && node scripts/benchmark-ray.mjs"
   },
   "dependencies": {
     "astronomy-engine": "^2.1.19",
