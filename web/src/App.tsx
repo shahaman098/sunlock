@@ -75,7 +75,7 @@ export default function App() {
     return new Map(meta.sites.map((s) => [s.id, statsFor(series.get(s.id)!, STEP_MIN)]));
   }, [meta, series]);
 
-  const officialSites = meta?.sites ?? [];
+  const officialSites = useMemo(() => meta?.sites ?? [], [meta]);
   const sites = useMemo(
     () => (customSite ? [...officialSites, customSite] : officialSites),
     [officialSites, customSite]
@@ -91,12 +91,24 @@ export default function App() {
     [customSite, customSeries]
   );
 
-  const selSeries = selected
-    ? selected.id === "custom" ? customSeries : series.get(selected.id) ?? []
-    : [];
-  const selStats = selected
-    ? selected.id === "custom" ? customStats : stats.get(selected.id)
-    : undefined;
+  const selSeries = useMemo(
+    () =>
+      selected
+        ? selected.id === "custom"
+          ? customSeries
+          : series.get(selected.id) ?? []
+        : [],
+    [selected, customSeries, series]
+  );
+  const selStats = useMemo(
+    () =>
+      selected
+        ? selected.id === "custom"
+          ? customStats
+          : stats.get(selected.id)
+        : undefined,
+    [selected, customStats, stats]
+  );
 
   const pickPoint = (u: { x: number; y: number }) => {
     if (!elevation) return;
@@ -136,10 +148,10 @@ export default function App() {
     return pts;
   }, [selected, currentMs]);
 
-  const windows = useMemo(() => {
-    if (!selected) return [];
-    return findWindows(selected, skies, STEP_MIN, missionDays, 4);
-  }, [selected, skies, missionDays]);
+  const windows = useMemo(
+    () => (selSeries.length ? findWindows(selSeries, STEP_MIN, missionDays, 4) : []),
+    [selSeries, missionDays]
+  );
 
   const comms = useMemo(() => (selSeries.length ? commWindows(selSeries, STEP_MIN) : []), [selSeries]);
   const nextComms = useMemo(() => (comms.length ? upcomingWindows(comms, currentMs, 4) : []), [comms, currentMs]);

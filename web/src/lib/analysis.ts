@@ -95,16 +95,14 @@ export type Window = {
 
 /** Rolling search for the best contiguous mission window of the requested length. */
 export function findWindows(
-  site: Site,
-  skies: Sky[],
+  samples: Sample[],
   stepMin: number,
   windowDays: number,
   limit = 4
 ): Window[] {
   const stepMs = stepMin * 60000;
   const span = Math.round((windowDays * 86400000) / stepMs);
-  if (span >= skies.length) return [];
-  const samples = siteSeries(site, skies);
+  if (span >= samples.length) return [];
 
   // Precompute lit/comm counts with a sliding window so long searches stay cheap.
   const stride = Math.max(1, Math.round(6 * 60 / stepMin));

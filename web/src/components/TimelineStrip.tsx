@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Sample } from "../lib/analysis";
 
 type Props = {
@@ -18,6 +18,7 @@ export default function TimelineStrip({ samples, currentMs, onScrub, height = 96
   const wrapRef = useRef<HTMLDivElement>(null);
   const ribbon = useRef<HTMLCanvasElement | null>(null);
   const size = useRef({ w: 0, h: 0, dpr: 1 });
+  const [resizeTick, setResizeTick] = useState(0);
 
   const drawRibbon = () => {
     const wrap = wrapRef.current;
@@ -80,7 +81,10 @@ export default function TimelineStrip({ samples, currentMs, onScrub, height = 96
     drawRibbon();
     const wrap = wrapRef.current;
     if (!wrap) return;
-    const ro = new ResizeObserver(() => drawRibbon());
+    const ro = new ResizeObserver(() => {
+      drawRibbon();
+      setResizeTick((t) => t + 1); // re-blit at the new backing-store size
+    });
     ro.observe(wrap);
     return () => ro.disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -114,7 +118,7 @@ export default function TimelineStrip({ samples, currentMs, onScrub, height = 96
     ctx.beginPath();
     ctx.arc(px, barTop - 8 * dpr, 3 * dpr, 0, Math.PI * 2);
     ctx.fill();
-  }, [currentMs, samples, height]);
+  }, [currentMs, samples, height, resizeTick]);
 
   const handle = (clientX: number) => {
     const wrap = wrapRef.current;
