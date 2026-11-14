@@ -84,40 +84,60 @@ sampling steps over near-field ridges and inflates sunlight.
 
 ### Convergence test (bilinear sampling, 80 m DEM)
 
-| Step | Mean horizon | Illumination |
-|---|---|---|
-| 80 m | −1.16° | 60.0% |
-| 40 m | −1.10° | 58.6% |
-| 20 m | −1.05° | 57.1% |
-| 10 m | −0.99° | 54.1% |
+| Step | Mean horizon | Centre-of-disc | Any part of disc |
+|---|---|---|---|
+| 160 m | — | 87.0% | 94.8% |
+| 80 m | — | 60.0% | 72.4% |
+| 40 m | — | 58.6% | 70.8% |
 
-With interpolation the sequence is converging downward, apparently toward ~52–55%,
-not 86%.
+The estimator converges toward **~70–72%** (any-part-of-disc) at this coordinate, not 86%.
 
-### What this means — stated plainly
+### What the literature actually measures
 
-- The shipped app uses **nearest-neighbour at 2-pixel steps**, which gives **86.4%**.
-  That value is reproducible, matches the published 80–86% range for the best
-  south-pole points, and is what the submission quotes.
-- A **converged bilinear** computation at the same coordinate gives **~55%**.
-- These are not reconcilable as the same quantity. The difference is the horizon
-  estimator, not the ephemeris (which is verified to 0.003°).
+This is the part that matters, and it resolves most of the discrepancy.
 
-Possible explanations, none yet eliminated:
+**Gläser et al. (2017)**, *Illumination Conditions at the Lunar Poles: Implications for Future
+Exploration* (NASA NTRS 20170007365), computes illumination over a **20-year** period,
+hourly, **2 m above ground**, and defines it as *"the percentage of a given period in which
+**any portion of the Sun is visible**"*. Their numbers:
 
-1. Published figures may describe **any part of the solar disc visible** rather than
-   the disc centre; at these elevations a 0.27° limb allowance is worth tens of percent.
-2. Published figures select the **best point** found by exhaustive search on a
-   high-resolution DEM; our coordinate was chosen at 80 m and may be tens of metres
-   from the optimum.
-3. The converged estimator may still be sampling near-field DEM noise that a real
-   lander footprint would average over.
+| Site | Max average illumination |
+|---|---|
+| Connecting Ridge clusters (C1-0, C1-1) | **88.0%** |
+| Shackleton rim clusters (S0–S2) | **85.5%** |
+| Peary rim (north) | 85.1% |
+| Whipple crater (north) | 85.1% |
 
-Until one of these is settled, the honest position is: **86% is a convention-dependent
-point estimate, not a converged physical value.** The app should say so, and the next
-piece of work is to decide the convention and apply it consistently.
+and *"these sites are typically illuminated for about 90%"*, with *"maximum times in shadow
+of less than three and up to eight days"*.
 
----
+Three conventions differ from ours, and each pushes in a known direction:
+
+1. **Any part of the disc vs disc centre** — worth **+8 to +12 points** in our own test
+   (87.0 → 94.8; 60.0 → 72.4).
+2. **Optimised cluster vs region-centre coordinate** — their sites are found by exhaustive
+   search on the ridge; ours is a region centre snapped at 80 m.
+3. **20 years vs 180 days** — longer baselines catch worse seasons.
+
+**Barker et al. (2021)**, *Improved LOLA elevation maps for south pole landing sites*
+(NTRS 20205009660), independently reports that *"natural terrain slope variations and
+sub-pixel sampling cause [height uncertainty] to be larger"* than geolocation error, and that
+these propagate into horizon elevation and predicted illumination. That is the same effect
+measured in section 3.
+
+### Reconciled position
+
+- Our shipped **86–87%** (disc centre, nearest-neighbour, 2-pixel steps) lands in the
+  published 85–88% band, but it is **not the same quantity**: the literature counts any
+  part of the disc, at optimised ridge clusters.
+- Our **converged** estimate at this coordinate is **~71%** any-part-of-disc, which is
+  consistent with being a region centre rather than a searched cluster.
+- One number *is* like-for-like: our longest continuous darkness at the Shackleton peak is
+  **3.5 days**, inside the *"less than three and up to eight days"* reported by Gläser et al.
+
+The right fix is to adopt the literature convention explicitly — any part of the solar disc,
+converged sampling, and site coordinates found by search rather than by 80 m snapping — and
+then compare numbers. That is a defined piece of work, not an unknown.
 
 ## 4. What is not validated
 
