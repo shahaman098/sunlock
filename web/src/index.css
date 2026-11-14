@@ -435,3 +435,28 @@ input[type="range"]::-webkit-slider-thumb {
   vertical-align: middle;
 }
 .clear-custom:hover { color: #dfe8f6; border-color: #3d5372; }
+
+/* ---------- loading ---------- */
+.map-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: radial-gradient(circle at 50% 45%, rgba(10,16,26,0.85), rgba(3,5,10,0.96));
+  color: #a9b9d2;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+}
+.map-loading strong { display: block; color: #e8eef8; font-weight: 600; margin-bottom: 3px; }
+.map-loading span { display: block; font-size: 11px; color: #6f82a0; }
+.spinner {
+  width: 18px; height: 18px; border-radius: 50%;
+  border: 2px solid rgba(242,180,92,0.25);
+  border-top-color: var(--sun);
+  animation: spin 0.9s linear infinite;
+  display: inline-block;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }

@@ -18,11 +18,13 @@ const unit = (v: Vec): Vec => {
 
 /**
  * Lunar body-fixed frame (mean Earth/polar axis), expressed as three J2000 unit
- * vectors. The pole comes from Astronomy Engine's IAU WGCCRE 2015 model, which
- * includes the periodic terms that carry the Moon's 1.54 deg axial tilt - the
- * full seasonal cycle depends on them. The prime meridian uses the IAU spin
- * polynomial; physical libration (< 0.03 deg) is omitted, well below the 80 m
- * terrain resolution.
+ * vectors. Both the pole and the prime-meridian angle come from Astronomy
+ * Engine's IAU WGCCRE 2015 model, which includes the periodic libration terms.
+ *
+ * Using only the polynomial for the spin angle drops those terms and puts the
+ * prime meridian ~2.2 deg off; with the full model the sub-solar and sub-observer
+ * longitudes agree with JPL Horizons to better than 0.001 deg (see
+ * scripts/verify-horizons.mjs and BENCHMARKS.md).
  */
 export function lunarFrame(date: Date): Frame {
   const ax = A.RotationAxis(A.Body.Moon, date);
@@ -30,14 +32,11 @@ export function lunarFrame(date: Date): Frame {
   const n = unit(cross({ x: 0, y: 0, z: 1 }, z));
   const m = cross(z, n);
 
-  const d = (date.getTime() - Date.UTC(2000, 0, 1, 12)) / 86400000;
-  const W = (38.3213 + 13.17635815 * d) * D;
-  const cw = Math.cos(W);
-  const sw = Math.sin(W);
+  const W = ax.spin * D;
   const x = unit({
-    x: n.x * cw + m.x * sw,
-    y: n.y * cw + m.y * sw,
-    z: n.z * cw + m.z * sw,
+    x: n.x * Math.cos(W) + m.x * Math.sin(W),
+    y: n.y * Math.cos(W) + m.y * Math.sin(W),
+    z: n.z * Math.cos(W) + m.z * Math.sin(W),
   });
   return { x, y: cross(z, x), z };
 }

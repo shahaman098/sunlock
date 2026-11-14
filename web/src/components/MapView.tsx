@@ -174,6 +174,16 @@ export default function MapView({ hillshade, field, shadow, sites, selectedId, o
         </div>
       )}
 
+      {!hillshade && (
+        <div className="map-loading">
+          <span className="spinner" aria-hidden />
+          <div>
+            <strong>Loading LRO terrain</strong>
+            <span>80 m elevation model · 2.6 MB</span>
+          </div>
+        </div>
+      )}
+
       <div className="map-legend">
         <span className="dot dot-lit" /> sunlit
         <span className="dot dot-dark" /> shadowed

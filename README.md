@@ -51,6 +51,18 @@ several candidate regions across a season is an afternoon of work per question.
 
 The map applies the same test at every pixel of a 384 × 384 grid.
 
+### Benchmarks
+
+See [BENCHMARKS.md](BENCHMARKS.md) for the full set: agreement with JPL Horizons on geometry
+(21″) and on the lunar frame (0.003° in longitude), the effect of the Sun's finite disc (0.40%),
+position sensitivity (±250 m → σ 0.04%) and horizon-sampling sensitivity (1.02% worst case).
+
+```bash
+cd web
+npm run verify   # JPL Horizons: geometry + frame
+npm run bench    # sensitivity of the illumination numbers
+```
+
 ### Independent verification
 
 The sky geometry is compared against **JPL Horizons** at 12 epochs across the 2027 window

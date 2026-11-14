@@ -35,7 +35,11 @@ export default function App() {
   const [missionDays, setMissionDays] = useState(14);
   const [arrayMode, setArrayMode] = useState<ArrayMode>("tracking");
   const [error, setError] = useState<string | null>(null);
-  const [verify, setVerify] = useState<{ epochs: number; maxSunDeg: number; maxEarthDeg: number; generated: string } | null>(null);
+  const [verify, setVerify] = useState<{
+    epochs: number;
+    geometry: { maxSunArcsec: number; maxEarthArcsec: number };
+    frame: { maxSunLonDeg: number; maxSunLatDeg: number };
+  } | null>(null);
   const [elevation, setElevation] = useState<ElevationGrid | null>(null);
   const [customSite, setCustomSite] = useState<Site | null>(null);
 
@@ -403,11 +407,13 @@ export default function App() {
             </p>
             {verify && (
               <p>
-                <b>Independent check.</b> The Sun and Earth directions were compared against JPL Horizons
-                (astrometric RA/Dec observed from the Moon's centre) at {verify.epochs} epochs across the
-                2027 window. Maximum difference: {verify.maxSunDeg.toFixed(4)}° for the Sun and{" "}
-                {verify.maxEarthDeg.toFixed(4)}° for Earth — about 23 arcseconds, which is the level of
-                aberration and light-time treatment, not of geometry.
+                <b>Independent check.</b> Two separate comparisons against JPL Horizons at{" "}
+                {verify.epochs} epochs across the 2027 window. <i>Geometry:</i> Sun and Earth directions
+                agree to {verify.geometry.maxSunArcsec.toFixed(1)}″ and{" "}
+                {verify.geometry.maxEarthArcsec.toFixed(1)}″ — the level of aberration and light-time
+                treatment, not of geometry. <i>Frame:</i> our sub-solar and sub-observer longitudes,
+                which depend on the IAU rotation model, agree to {verify.frame.maxSunLonDeg.toFixed(4)}°
+                in longitude and {verify.frame.maxSunLatDeg.toFixed(4)}° in latitude.
               </p>
             )}
             <p>
@@ -418,7 +424,9 @@ export default function App() {
             <p className="limits">
               <b>Limitations.</b> No atmospheric refraction, no terrain self-shadowing between distant
               peaks, no physical libration, 80 m terrain resolution, no thermal or dust modelling of array
-              output. This is a planning aid for comparison and intuition, not a flight-qualified analysis tool.
+              output. Illumination uses the centre of the solar disc; integrating over the disc changes
+              the result by at most 0.4% at these sites (see BENCHMARKS.md). This is a planning aid for
+              comparison and intuition, not a flight-qualified analysis tool.
             </p>
           </div>
         </details>
