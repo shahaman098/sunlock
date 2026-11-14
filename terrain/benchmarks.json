@@ -1,5 +1,5 @@
 {
-  "generated": "2026-11-14T17:23:39.292Z",
+  "generated": "2026-11-14T17:51:42.267Z",
   "window": {
     "days": 180,
     "stepMin": 30,
@@ -7,7 +7,6 @@
   },
   "model": {
     "sunAngularRadiusDeg": 0.266,
-    "earthAngularRadiusDeg": 0.95,
     "positionShiftRadiusM": 250,
     "coarseHorizonSamplingDeg": 4
   },
@@ -94,7 +93,7 @@
       "horizonDeltaPct": 0.09
     }
   ],
+  "maxDiscDeltaPct": 0.4,
   "maxPositionShiftSdPct": 0.04,
-  "maxHorizonDeltaPct": 1.02,
-  "maxDiscDeltaPct": 0.4
+  "maxHorizonDeltaPct": 1.02
 }
