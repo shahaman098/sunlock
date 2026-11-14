@@ -345,3 +345,74 @@ input[type="range"]::-webkit-slider-thumb {
   color: #93a6c4;
   font-variant-numeric: tabular-nums;
 }
+
+/* ---------- sky panorama ---------- */
+.skyview {
+  margin-top: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #060a12;
+  padding: 10px 12px 8px;
+}
+.sky-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+.sky-title { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+.sky-legend { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #9fb0c9; font-variant-numeric: tabular-nums; }
+.chip-earth { background: var(--comm); margin-left: 8px; }
+
+.sky-svg { width: 100%; height: 140px; display: block; }
+.sky-zero { stroke: rgba(140,165,200,0.45); stroke-width: 0.5; stroke-dasharray: 3 3; }
+.sky-guide { stroke: rgba(90,110,140,0.18); stroke-width: 0.4; }
+.sky-tick { fill: #4f6383; font-size: 5px; }
+.sky-compass { fill: #5f7391; font-size: 6px; letter-spacing: 0.1em; }
+.sky-track { fill: none; stroke: rgba(242,180,92,0.30); stroke-width: 0.7; stroke-dasharray: 2 2; }
+.sky-ground { fill: #10161f; stroke: #3d5372; stroke-width: 0.8; }
+.sky-sun { fill: var(--sun); }
+.sky-sun-glow { fill: rgba(242,180,92,0.16); }
+.sky-sun-label { fill: var(--sun-soft); font-size: 6px; font-weight: 600; }
+.sky-earth { fill: var(--comm); }
+.sky-earth-ring { fill: none; stroke: rgba(63,199,240,0.45); stroke-width: 0.6; }
+.sky-earth-label { fill: #9fe3f8; font-size: 6px; font-weight: 600; }
+.sky-foot { display: flex; justify-content: space-between; font-size: 10.5px; color: #6f82a0; margin-top: 6px; }
+.sky-scale { color: #4f6383; font-variant-numeric: tabular-nums; }
+
+/* ---------- power ---------- */
+.segmented { display: flex; border: 1px solid #24334c; border-radius: 8px; overflow: hidden; }
+.seg {
+  background: transparent; border: 0; color: #8fa2bd; font-size: 10.5px;
+  padding: 4px 9px; cursor: pointer; letter-spacing: 0.02em;
+}
+.seg:hover { color: #dfe8f6; }
+.seg-on { background: #16233a; color: var(--sun-soft); }
+
+.power-note { font-size: 12px; line-height: 1.55; color: #a9b9d2; margin: 10px 0 12px; }
+.power-note b { color: #e8eef8; }
+
+.battery {
+  display: flex; flex-direction: column; gap: 2px;
+  border-left: 2px solid var(--comm);
+  padding-left: 10px;
+  margin-bottom: 8px;
+}
+.battery-k { font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: #7d90ad; }
+.battery-v { font-size: 20px; font-weight: 600; color: #eaf6ff; font-variant-numeric: tabular-nums; }
+.battery-h { font-size: 10.5px; color: #5f7391; line-height: 1.45; }
+
+/* ---------- comm windows ---------- */
+.linkstate { display: flex; align-items: center; gap: 7px; font-size: 12px; color: #cfdcee; margin-bottom: 10px; }
+.dot-live { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.dot-ok { background: var(--comm); box-shadow: 0 0 8px rgba(63,199,240,0.7); }
+.dot-off { background: #33405a; }
+.linkmargin { margin-left: auto; font-size: 10.5px; color: #6f82a0; font-variant-numeric: tabular-nums; }
+
+.windowlist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.wlink {
+  width: 100%;
+  display: grid; grid-template-columns: 1fr 62px 42px; gap: 8px; align-items: center;
+  background: var(--panel-2); border: 1px solid #1a2434; border-radius: 8px;
+  padding: 6px 9px; cursor: pointer; text-align: left;
+  color: #cfdcee; font-size: 11.5px;
+}
+.wlink:hover { border-color: #2f4568; }
+.w-when { font-variant-numeric: tabular-nums; }
+.w-len { text-align: right; color: var(--sun-soft); font-variant-numeric: tabular-nums; }
+.w-margin { text-align: right; color: #6f82a0; font-variant-numeric: tabular-nums; font-size: 10.5px; }

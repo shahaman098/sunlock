@@ -49,6 +49,20 @@ several candidate regions across a season is an afternoon of work per question.
 
 The map applies the same test at every pixel of a 384 × 384 grid.
 
+### Independent verification
+
+The sky geometry is compared against **JPL Horizons** at 12 epochs across the 2027 window
+(astrometric RA/Dec, observer = Moon centre):
+
+```
+node web/scripts/verify-horizons.mjs
+```
+
+Result: maximum difference **0.0058°** for the Sun and **0.0063°** for Earth — about 23 arcseconds,
+the level of aberration and light-time treatment rather than of geometry, and two orders of
+magnitude below the 80 m terrain resolution. Output is committed at
+`web/public/terrain/verification.json` and shown in the app's method panel.
+
 ### Validation
 
 - The projection is checked against known relief: Malapert Massif is high, the Cabeus floor is

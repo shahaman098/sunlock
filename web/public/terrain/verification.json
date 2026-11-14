@@ -1,0 +1,71 @@
+{
+  "generated": "2026-11-14T15:17:17.479Z",
+  "source": "JPL Horizons API (ssd-api.jpl.nasa.gov), astrometric RA/Dec, observer = Moon body centre",
+  "epochs": 12,
+  "maxSunArcsec": 20.98,
+  "maxEarthArcsec": 22.74,
+  "maxSunDeg": 0.0058,
+  "maxEarthDeg": 0.0063,
+  "rows": [
+    {
+      "epoch": "2027-01-01T00:00:00Z",
+      "sunArcsec": 20.76,
+      "earthArcsec": 7.2
+    },
+    {
+      "epoch": "2027-01-17T00:00:00Z",
+      "sunArcsec": 20.95,
+      "earthArcsec": 3.48
+    },
+    {
+      "epoch": "2027-02-02T00:00:00Z",
+      "sunArcsec": 20.85,
+      "earthArcsec": 15.81
+    },
+    {
+      "epoch": "2027-02-18T00:00:00Z",
+      "sunArcsec": 20.98,
+      "earthArcsec": 12.55
+    },
+    {
+      "epoch": "2027-03-06T00:00:00Z",
+      "sunArcsec": 20.35,
+      "earthArcsec": 20.8
+    },
+    {
+      "epoch": "2027-03-22T00:00:00Z",
+      "sunArcsec": 20.39,
+      "earthArcsec": 17.87
+    },
+    {
+      "epoch": "2027-04-07T00:00:00Z",
+      "sunArcsec": 19.7,
+      "earthArcsec": 22.74
+    },
+    {
+      "epoch": "2027-04-23T00:00:00Z",
+      "sunArcsec": 19.87,
+      "earthArcsec": 16.13
+    },
+    {
+      "epoch": "2027-05-09T00:00:00Z",
+      "sunArcsec": 19.46,
+      "earthArcsec": 19.82
+    },
+    {
+      "epoch": "2027-05-25T00:00:00Z",
+      "sunArcsec": 19.81,
+      "earthArcsec": 10.72
+    },
+    {
+      "epoch": "2027-06-10T00:00:00Z",
+      "sunArcsec": 19.61,
+      "earthArcsec": 8.4
+    },
+    {
+      "epoch": "2027-06-26T00:00:00Z",
+      "sunArcsec": 19.97,
+      "earthArcsec": 3.21
+    }
+  ]
+}

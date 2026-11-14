@@ -6,6 +6,8 @@ export type Sample = {
   comm: boolean;
   sunElev: number;
   earthElev: number;
+  /** degrees of clearance between Earth and the local skyline (negative = blocked) */
+  earthMargin: number;
   power: number; // relative solar array output, 0..1
 };
 
@@ -26,6 +28,7 @@ export function siteSeries(site: Site, skies: Sky[]): Sample[] {
       comm: r.comm,
       sunElev: r.sunElev,
       earthElev: r.earthElev,
+      earthMargin: r.earthElev - r.earthHorizon,
       power: r.lit ? Math.max(0, Math.sin((r.sunElev * Math.PI) / 180)) : 0,
     };
   });
@@ -164,4 +167,61 @@ function scoreDark(samples: Sample[], from: number, to: number) {
     if (!samples[i].lit) { run++; best = Math.max(best, run); } else run = 0;
   }
   return best;
+}
+
+
+export type CommWindow = {
+  start: number;
+  end: number;
+  hours: number;
+  /** mean clearance above the skyline across the window, degrees */
+  margin: number;
+};
+
+/** Contiguous intervals where the Earth link is available. */
+export function commWindows(samples: Sample[], stepMin: number): CommWindow[] {
+  const out: CommWindow[] = [];
+  const stepMs = stepMin * 60000;
+  let runStart = -1;
+  let marginSum = 0;
+  let n = 0;
+
+  for (let i = 0; i < samples.length; i++) {
+    const s = samples[i];
+    if (s.comm) {
+      if (runStart < 0) {
+        runStart = s.t;
+        marginSum = 0;
+        n = 0;
+      }
+      marginSum += s.earthMargin;
+      n++;
+    } else if (runStart >= 0) {
+      const end = s.t;
+      out.push({
+        start: runStart,
+        end,
+        hours: (end - runStart) / 3600000,
+        margin: n ? marginSum / n : 0,
+      });
+      runStart = -1;
+    }
+  }
+  if (runStart >= 0) {
+    const end = samples[samples.length - 1].t + stepMs;
+    out.push({
+      start: runStart,
+      end,
+      hours: (end - runStart) / 3600000,
+      margin: n ? marginSum / n : 0,
+    });
+  }
+  return out;
+}
+
+/** The next few windows after `nowMs`, wrapping to the start of the series. */
+export function upcomingWindows(windows: CommWindow[], nowMs: number, count = 4): CommWindow[] {
+  const after = windows.filter((w) => w.end >= nowMs);
+  if (after.length >= count) return after.slice(0, count);
+  return [...after, ...windows.slice(0, count - after.length)];
 }

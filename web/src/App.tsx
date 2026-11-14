@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import MapView from "./components/MapView";
+import SkyView from "./components/SkyView";
 import TimelineStrip from "./components/TimelineStrip";
 import { buildShadowField, loadTerrain, computeShadow, type ShadowField, type TerrainMeta } from "./lib/terrain";
-import { buildSkies, findWindows, siteSeries, statsFor, type Sample, type SiteStats } from "./lib/analysis";
-import { skyAt } from "./lib/selene";
+import { buildSkies, commWindows, findWindows, siteSeries, statsFor, upcomingWindows, type Sample, type SiteStats } from "./lib/analysis";
+import { skyAt, readSite, siteBasis, lookAngles } from "./lib/selene";
+import { arrayPowerPerM2, batteryWh, energyWh, fmtEnergy, fmtPower, type ArrayMode } from "./lib/power";
 
 const START = new Date(Date.UTC(2027, 0, 1));
 const DAYS = 180;
@@ -18,6 +20,12 @@ const fmtDate = (ms: number) =>
 const fmtDay = (ms: number) =>
   new Date(ms).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
 
+const fmtDuration = (h: number) => {
+  if (h >= 48) return `${(h / 24).toFixed(1)} d`;
+  if (h >= 1) return `${h.toFixed(1)} h`;
+  return `${Math.round(h * 60)} min`;
+};
+
 export default function App() {
   const [meta, setMeta] = useState<TerrainMeta | null>(null);
   const [field, setField] = useState<ShadowField | null>(null);
@@ -25,7 +33,9 @@ export default function App() {
   const [selectedId, setSelectedId] = useState("peak-shackleton");
   const [currentMs, setCurrentMs] = useState(START.getTime() + 14 * 86400000);
   const [missionDays, setMissionDays] = useState(14);
+  const [arrayMode, setArrayMode] = useState<ArrayMode>("tracking");
   const [error, setError] = useState<string | null>(null);
+  const [verify, setVerify] = useState<{ epochs: number; maxSunDeg: number; maxEarthDeg: number; generated: string } | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -39,6 +49,12 @@ export default function App() {
         img.src = `${import.meta.env.BASE_URL}terrain/hillshade.jpg`;
       })
       .catch((e) => setError(String(e)));
+
+    fetch(`${import.meta.env.BASE_URL}terrain/verification.json`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((v) => { if (alive && v) setVerify(v); })
+      .catch(() => {});
+
     return () => { alive = false; };
   }, []);
 
@@ -60,10 +76,39 @@ export default function App() {
   const currentSky = useMemo(() => skyAt(new Date(currentMs)), [currentMs]);
   const shadow = useMemo(() => (field ? computeShadow(field, currentSky) : null), [field, currentSky]);
 
+  const reading = useMemo(
+    () => (selected ? readSite(selected, currentSky) : null),
+    [selected, currentSky]
+  );
+
+  // Sun track around the selected moment, for the sky panorama.
+  const track = useMemo(() => {
+    if (!selected) return [];
+    const basis = siteBasis(selected.lat, selected.lon);
+    const pts: { az: number; elev: number }[] = [];
+    const dayMs = 86400000;
+    for (let t = currentMs - 20 * dayMs; t <= currentMs + 20 * dayMs; t += 6 * 3600000) {
+      const l = lookAngles(skyAt(new Date(t)).sun, basis);
+      pts.push({ az: l.az, elev: Math.max(-6, Math.min(16, l.elev)) });
+    }
+    return pts;
+  }, [selected, currentMs]);
+
   const windows = useMemo(() => {
     if (!selected) return [];
     return findWindows(selected, skies, STEP_MIN, missionDays, 4);
   }, [selected, skies, missionDays]);
+
+  const comms = useMemo(() => (selSeries.length ? commWindows(selSeries, STEP_MIN) : []), [selSeries]);
+  const nextComms = useMemo(() => (comms.length ? upcomingWindows(comms, currentMs, 4) : []), [comms, currentMs]);
+
+  const powerNow = reading ? arrayPowerPerM2(reading.sunElev, reading.lit, arrayMode) : 0;
+  const altMode: ArrayMode = arrayMode === "tracking" ? "horizontal" : "tracking";
+  const energyTotal = selSeries.length ? energyWh(selSeries, STEP_MIN, arrayMode, 1) : 0;
+  const altTotal = selSeries.length ? energyWh(selSeries, STEP_MIN, altMode, 1) : 0;
+  const energyPerDay = energyTotal / DAYS;
+  const altPerDay = altTotal / DAYS;
+  const battery = selStats ? batteryWh(selStats.longestDarkH, 100) : 0;
 
   const ranked = [...sites].sort((a, b) => (stats.get(b.id)?.score ?? 0) - (stats.get(a.id)?.score ?? 0));
 
@@ -78,7 +123,8 @@ export default function App() {
           </div>
         </div>
         <div className="provenance">
-          LRO&nbsp;LOLA 80&nbsp;m DEM · IAU&nbsp;2015 lunar frame · JPL-grade ephemeris
+          LRO&nbsp;LOLA 80&nbsp;m DEM · IAU&nbsp;2015 lunar frame
+          {verify && <> · cross-checked vs JPL&nbsp;Horizons</>}
         </div>
       </header>
 
@@ -106,12 +152,23 @@ export default function App() {
               type="range"
               min={START.getTime()}
               max={START.getTime() + DAYS * 86400000}
-              step={30 * 60000}
+              step={STEP_MIN * 60000}
               value={currentMs}
               onChange={(e) => setCurrentMs(Number(e.target.value))}
               aria-label="Time"
             />
           </div>
+
+          {reading && (
+            <SkyView
+              horizon={selected.horizonDeg}
+              sun={{ az: reading.sunAz, elev: reading.sunElev }}
+              earth={{ az: reading.earthAz, elev: reading.earthElev }}
+              track={track}
+              sunLit={reading.lit}
+              earthComm={reading.comm}
+            />
+          )}
         </section>
 
         <aside className="side">
@@ -146,6 +203,81 @@ export default function App() {
                 Jump to the best {missionDays}-day window → {fmtDay(windows[0].start)}
               </button>
             )}
+          </div>
+
+          <div className="card">
+            <div className="card-head">
+              <h3 className="card-title">Power and storage</h3>
+              <div className="segmented" role="group" aria-label="Array orientation">
+                <button
+                  className={arrayMode === "tracking" ? "seg seg-on" : "seg"}
+                  onClick={() => setArrayMode("tracking")}
+                >Sun-facing</button>
+                <button
+                  className={arrayMode === "horizontal" ? "seg seg-on" : "seg"}
+                  onClick={() => setArrayMode("horizontal")}
+                >Horizontal</button>
+              </div>
+            </div>
+
+            <div className="statgrid">
+              <Stat label="Now" value={fmtPower(powerNow)} hint="per m² of array" />
+              <Stat label="Daily yield" value={energyPerDay ? `${(energyPerDay / 1000).toFixed(1)} kWh` : "…"} hint="per m², averaged" />
+            </div>
+
+            <div className="power-note">
+              A {arrayMode === "tracking" ? "sun-facing" : "horizontal"} panel yields{" "}
+              <b>{(energyPerDay / 1000).toFixed(2)} kWh/m²/day</b> here.{" "}
+              {arrayMode === "horizontal"
+                ? "At these Sun elevations a flat panel collects almost nothing — which is why polar arrays are mounted vertically."
+                : "Tracking the Sun is the only way to make a polar array useful; the alternative gathers "}
+              {arrayMode !== "horizontal" && <b>{(altPerDay / 1000).toFixed(2)} kWh/m²/day</b>}
+              {arrayMode !== "horizontal" && " instead."}
+            </div>
+
+            <div className="battery">
+              <span className="battery-k">Ride through the longest night</span>
+              <span className="battery-v">{fmtEnergy(battery)}</span>
+              <span className="battery-h">
+                battery for a 100 W load across {selStats ? (selStats.longestDarkH / 24).toFixed(1) : "—"} days, at 80% depth of discharge
+              </span>
+            </div>
+            <p className="fineprint">
+              First-order model: 1361 W/m², 28% cell efficiency, 0.9 system derate, no thermal or dust modelling.
+            </p>
+          </div>
+
+          <div className="card">
+            <h3 className="card-title">Earth-link windows</h3>
+            <div className="linkstate">
+              {reading && (
+                <>
+                  <span className={reading.comm ? "dot-live dot-ok" : "dot-live dot-off"} />
+                  {reading.comm ? "In contact now" : "No contact now"}
+                  <span className="linkmargin">
+                    {reading.earthElev >= 0 ? "+" : ""}
+                    {reading.earthElev.toFixed(1)}° elevation · skyline {reading.earthHorizon.toFixed(1)}°
+                  </span>
+                </>
+              )}
+            </div>
+            <ul className="windowlist">
+              {nextComms.map((w, i) => (
+                <li key={`${w.start}-${i}`}>
+                  <button className="wlink" onClick={() => setCurrentMs(w.start)}>
+                    <span className="w-when">
+                      {fmtDay(w.start)} · {new Date(w.start).toISOString().slice(11, 16)}Z
+                    </span>
+                    <span className="w-len">{fmtDuration(w.hours)}</span>
+                    <span className="w-margin">+{w.margin.toFixed(1)}°</span>
+                  </button>
+                </li>
+              ))}
+              {nextComms.length === 0 && <li className="fineprint">No windows in this range.</li>}
+            </ul>
+            <p className="fineprint">
+              {comms.length} separate windows across the 180 days; clearance is the mean margin above the local skyline.
+            </p>
           </div>
 
           <div className="card">
@@ -213,7 +345,8 @@ export default function App() {
             <p>
               Terrain: NASA <b>LRO LOLA</b> gridded elevation model <code>LDEM_80S_80M</code> (PDS Geosciences
               Node, LRO-L-LOLA-4-GDR-V1.0), 80 m/pixel, south polar stereographic, referenced to a 1737.4 km
-              sphere. The local horizon at each site is ray-marched over 360 azimuths for up to 64 km.
+              sphere. The local horizon at each site is ray-marched over 360 azimuths for up to 64 km,
+              with the lunar curvature drop subtracted.
             </p>
             <p>
               Ephemeris: Sun and Earth vectors from <b>Astronomy Engine</b> (VSOP87/ELP-based), rotated into
@@ -221,10 +354,24 @@ export default function App() {
               sunlit when the solar elevation exceeds its terrain horizon in that azimuth; the Earth link is
               counted while Earth is above the horizon, allowing for its ~0.95° angular radius.
             </p>
+            {verify && (
+              <p>
+                <b>Independent check.</b> The Sun and Earth directions were compared against JPL Horizons
+                (astrometric RA/Dec observed from the Moon's centre) at {verify.epochs} epochs across the
+                2027 window. Maximum difference: {verify.maxSunDeg.toFixed(4)}° for the Sun and{" "}
+                {verify.maxEarthDeg.toFixed(4)}° for Earth — about 23 arcseconds, which is the level of
+                aberration and light-time treatment, not of geometry.
+              </p>
+            )}
+            <p>
+              Power: solar constant 1361 W/m², cell efficiency 28%, system derate 0.9. A sun-facing array is
+              treated as normal-incidence; a horizontal array uses the cosine of solar zenith. Battery capacity
+              is the longest continuous darkness at a 100 W load and 80% depth of discharge.
+            </p>
             <p className="limits">
               <b>Limitations.</b> No atmospheric refraction, no terrain self-shadowing between distant
-              peaks, no physical libration, no thermal or power-system model, 80 m terrain resolution. This
-              is a planning aid for comparison and intuition, not a flight-qualified analysis tool.
+              peaks, no physical libration, 80 m terrain resolution, no thermal or dust modelling of array
+              output. This is a planning aid for comparison and intuition, not a flight-qualified analysis tool.
             </p>
           </div>
         </details>

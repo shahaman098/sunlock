@@ -53,7 +53,7 @@
   }
   .title-slide h1 { font-size: 92px; }
   .tagline { font-size: 24px; color: #cbd8ea; margin-top: 4px; }
-  .meta { margin-top: 38px; display: flex; gap: 42px; font-size: 13px; color: #7d90ad; letter-spacing: .04em; }
+  .meta { margin-top: 38px; display: flex; gap: 34px; flex-wrap: nowrap; font-size: 13px; color: #7d90ad; letter-spacing: .04em; }
   .meta b { color: #dfe8f6; font-weight: 600; display: block; margin-bottom: 3px; font-size: 12px; letter-spacing: .14em; text-transform: uppercase; }
 
   /* two-column */
@@ -69,7 +69,7 @@
     background: #03050a; display: block; width: 100%; height: auto;
   }
   .shot-tall { width: auto; max-height: 452px; margin: 0 auto; }
-  .shot-wide { max-height: 205px; object-fit: contain; background: #05070d; }
+  .shot-wide { max-height: 236px; object-fit: contain; background: #05070d; }
   .shot-mid { max-height: 300px; object-fit: contain; background: #05070d; }
   .caption { font-size: 11.5px; color: #5f7391; margin-top: 9px; letter-spacing: .03em; }
 
@@ -111,6 +111,7 @@
   </p>
   <div class="meta">
     <div><b>Team</b>SUNLOCK</div>
+    <div><b>Team member</b>Aman Kumar Sah</div>
     <div><b>Challenge</b>Lunar Landing Site Navigator</div>
     <div><b>Event</b>NASA Space Apps Challenge 2026 · Universal</div>
   </div>
@@ -158,6 +159,7 @@
         <li><b>Scrub time.</b> The shadow map is recomputed from the elevation model on every step — not a texture, a simulation.</li>
         <li><b>Pick a site.</b> Nine candidate regions, each snapped to its best local high ground.</li>
         <li><b>Read the verdict.</b> Sunlight %, longest continuous night, Earth-link duty cycle.</li>
+        <li><b>Look up from the site.</b> A sky panorama plots the Sun and Earth against the real ridge line, so occlusion is visible, not implied.</li>
         <li><b>Find the window.</b> Ranked, non-overlapping landing windows for a chosen mission length.</li>
       </ul>
       <div class="note">A planner goes from "which site, and when?" to a defensible answer in about ten seconds.</div>
@@ -175,15 +177,15 @@
     <div class="step"><div class="n">03 · EPHEMERIS</div><h3>Sun and Earth, body-fixed</h3><p>VSOP87/ELP-class positions rotated into the IAU 2015 lunar frame — including the Moon's 1.54° tilt and libration.</p></div>
     <div class="step"><div class="n">04 · DECISION</div><h3>Lit, linked, ranked</h3><p>A point is sunlit when solar elevation clears its horizon; Earth-linked while Earth is above the skyline. Then windows are searched.</p></div>
   </div>
-  <div class="cols" style="margin-top:8px">
+  <div class="cols" style="margin-top:8px; grid-template-columns: 1.45fr 1fr">
     <div>
-      <img class="shot shot-wide" src="timeline.jpg" alt="Illumination timeline over six months" />
-      <div class="caption">Six months at the Shackleton peak: continuous light through the lunar summer, then the seasonal breakdown.</div>
+      <img class="shot shot-wide" src="sky.jpg" alt="Sky panorama with terrain horizon, Sun and Earth" />
+      <div class="caption">Sky above the site: the terrain silhouette is the real horizon, Earth sits 5.1° above it, the Sun only 0.4°. This is the test that decides light and link.</div>
     </div>
     <div>
       <ul>
         <li><b>Verifiable, not vibes.</b> Every output is a function of public data you can re-run.</li>
-        <li><b>Checks built in.</b> The projection is validated against known relief — Malapert is high, Cabeus is deep, Shackleton lands where it should.</li>
+        <li><b>Cross-checked against JPL Horizons.</b> Sun and Earth directions agree to <b>0.006°</b> across 12 epochs — 23 arcseconds, two orders below the 80 m terrain.</li>
         <li><b>Honest limits</b> are printed in the app: no refraction, no thermal model, 80 m resolution.</li>
       </ul>
     </div>
@@ -197,21 +199,22 @@
   <div class="statrow">
     <div class="stat"><div class="k">Peak near Shackleton</div><div class="v">86%</div><div class="h">sunlit over 180 days</div></div>
     <div class="stat"><div class="k">Longest night</div><div class="v">3.5 d</div><div class="h">continuous darkness</div></div>
-    <div class="stat"><div class="k">Earth link</div><div class="v">62%</div><div class="h">line-of-sight duty cycle</div></div>
-    <div class="stat"><div class="k">Spread</div><div class="v">86 → 1%</div><div class="h">best to worst region</div></div>
+    <div class="stat"><div class="k">Array, sun-facing</div><div class="v">7.1 kWh</div><div class="h">per m² per day</div></div>
+    <div class="stat"><div class="k">Battery, 100 W load</div><div class="v">10.4 kWh</div><div class="h">to ride out the night</div></div>
   </div>
   <div class="cols" style="gap:30px">
     <div>
-      <img class="shot shot-mid" src="stats.jpg" alt="Site statistics panel" />
+      <img class="shot shot-mid" src="power.jpg" alt="Power and storage panel" />
     </div>
     <div>
-      <img class="shot shot-mid" src="rank.jpg" alt="Site ranking table" />
+      <img class="shot shot-mid" src="windows.jpg" alt="Earth-link window list" />
     </div>
   </div>
   <p style="margin-top:18px; font-size:15.5px; max-width:96ch">
     The top site's 86% matches published south-pole illumination studies (~80–86% at the best
-    locations). The ranking also exposes the trap: two named regions sit under 2% because their
-    chosen ground is in permanent shadow — a decision you want to see <i>before</i> you build a lander.
+    locations). The power panel shows why polar arrays are mounted vertically: a flat panel gathers
+    0.02 kWh/m²/day here against 7.1 for a sun-facing one. Earth-link windows are listed as real
+    intervals with clearance above the skyline — seven of them across 180 days.
   </p>
   <div class="footer"><span>SUNLOCK</span><span class="num">05 / 07</span></div>
 </section>
