@@ -33,7 +33,23 @@ export default function SkyView({ horizon, sun, earth, track, sunLit, earthComm 
     horizon.map((e, i) => `${i === 0 ? "M" : "L"}${i},${yOf(e).toFixed(1)}`).join(" ") +
     ` L${W},${yOf(horizon[0]).toFixed(1)} L${W},${H} L0,${H} Z`;
 
-  const path = track.map((p, i) => `${i === 0 ? "M" : "L"}${xOf(p.az).toFixed(1)},${yOf(p.elev).toFixed(1)}`).join(" ");
+  // Split into segments where the azimuth wraps, otherwise the polyline smears across the sky.
+  const segments: string[] = [];
+  let current = "";
+  let prevAz = null as number | null;
+  for (const p of track) {
+    const az = ((p.az % 360) + 360) % 360;
+    const jump = prevAz !== null && Math.abs(az - prevAz) > 180;
+    if (current === "" || jump) {
+      if (current) segments.push(current);
+      current = `M${az.toFixed(1)},${yOf(p.elev).toFixed(1)}`;
+    } else {
+      current += ` L${az.toFixed(1)},${yOf(p.elev).toFixed(1)}`;
+    }
+    prevAz = az;
+  }
+  if (current) segments.push(current);
+  const path = segments.join(" ");
 
   const sx = xOf(sun.az);
   const sy = yOf(sun.elev);

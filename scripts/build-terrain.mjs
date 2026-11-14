@@ -16,6 +16,7 @@ import fs from "node:fs";
 import path from "node:path";
 import zlib from "node:zlib";
 import { fileURLToPath } from "node:url";
+import { execFileSync } from "node:child_process";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SRC = path.join(ROOT, "data/raw/ldem_80s_80m.img");
@@ -205,8 +206,20 @@ function png(width, height, rgbBuf) {
     chunk("IHDR", ihdr), chunk("IDAT", zlib.deflateSync(raw, { level: 9 })), chunk("IEND", Buffer.alloc(0)),
   ]);
 }
-fs.writeFileSync(path.join(OUT, "hillshade.png"), png(OV, OV, rgb));
+const pngPath = path.join(OUT, "hillshade.png");
+fs.writeFileSync(pngPath, png(OV, OV, rgb));
 console.error("wrote hillshade.png");
+
+// The app loads hillshade.jpg. Convert with sips (macOS); otherwise the PNG stays and
+// the app will not find its basemap, so say so loudly.
+try {
+  execFileSync("sips", ["-s", "format", "jpeg", "-s", "formatOptions", "82", pngPath, "--out", path.join(OUT, "hillshade.jpg")], { stdio: "ignore" });
+  fs.unlinkSync(pngPath);
+  console.error("wrote hillshade.jpg (converted with sips)");
+} catch {
+  console.error("WARNING: could not convert hillshade.png to hillshade.jpg (sips unavailable).");
+  console.error("         Run: sips -s format jpeg -s formatOptions 82 " + pngPath + " --out " + path.join(OUT, "hillshade.jpg"));
+}
 
 // ------------------------------------------------------------ shadow grid
 const G = 384;
@@ -316,6 +329,7 @@ fs.writeFileSync(path.join(OUT, "sites.json"), JSON.stringify({
   grid: { size: N, pixM: PIX_M },
   overview: { size: OV },
   shadow: { size: G, azimuthBins: AZ },
+  elevation: { size: 1024, pixM: (N * PIX_M) / 1024 },
   sites: siteProfiles,
 }));
 console.error("wrote sites.json");

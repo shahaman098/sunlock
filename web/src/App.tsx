@@ -4,7 +4,7 @@ import SkyView from "./components/SkyView";
 import TimelineStrip from "./components/TimelineStrip";
 import { buildShadowField, loadTerrain, computeShadow, customHorizon, unprojectFromUnit, type ElevationGrid, type ShadowField, type TerrainMeta } from "./lib/terrain";
 import { buildSkies, commWindows, findWindows, siteSeries, statsFor, upcomingWindows, type Sample, type SiteStats } from "./lib/analysis";
-import { skyAt, readSite, siteBasis, lookAngles } from "./lib/selene";
+import { skyAt, readSite, siteBasis, lookAngles, type Site } from "./lib/selene";
 import { arrayPowerPerM2, batteryWh, energyWh, fmtEnergy, fmtPower, type ArrayMode } from "./lib/power";
 
 const START = new Date(Date.UTC(2027, 0, 1));
@@ -37,7 +37,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [verify, setVerify] = useState<{ epochs: number; maxSunDeg: number; maxEarthDeg: number; generated: string } | null>(null);
   const [elevation, setElevation] = useState<ElevationGrid | null>(null);
-  const [customSite, setCustomSite] = useState<import("./lib/selene").Site | null>(null);
+  const [customSite, setCustomSite] = useState<Site | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -72,7 +72,10 @@ export default function App() {
   }, [meta, series]);
 
   const officialSites = meta?.sites ?? [];
-  const sites = customSite ? [...officialSites, customSite] : officialSites;
+  const sites = useMemo(
+    () => (customSite ? [...officialSites, customSite] : officialSites),
+    [officialSites, customSite]
+  );
   const selected = sites.find((s) => s.id === selectedId) ?? officialSites[0];
 
   const customSeries = useMemo(

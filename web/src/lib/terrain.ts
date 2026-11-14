@@ -6,6 +6,7 @@ export type TerrainMeta = {
   grid: { size: number; pixM: number };
   overview: { size: number };
   shadow: { size: number; azimuthBins: number };
+  elevation: { size: number; pixM: number };
   sites: Site[];
 };
 
@@ -45,13 +46,20 @@ export async function loadTerrain(): Promise<{
     fetch(`${import.meta.env.BASE_URL}terrain/shadowgrid.bin`),
     fetch(`${import.meta.env.BASE_URL}terrain/elevgrid.bin`),
   ]);
+  for (const [name, res] of [["sites.json", metaRes], ["shadowgrid.bin", shadowRes], ["elevgrid.bin", elevRes]] as const) {
+    if (!res.ok) throw new Error(`${name} failed: HTTP ${res.status}`);
+  }
   const meta: TerrainMeta = await metaRes.json();
   const buf = await shadowRes.arrayBuffer();
   const elevBuf = await elevRes.arrayBuffer();
+  const elevMeta = meta.elevation ?? { size: 1024, pixM: (GRID * PIX_M) / 1024 };
+  if (elevBuf.byteLength !== elevMeta.size * elevMeta.size * 2) {
+    throw new Error(`elevgrid.bin size mismatch: ${elevBuf.byteLength} bytes`);
+  }
   return {
     meta,
     shadows: new Uint8Array(buf),
-    elevation: { size: 1024, pixM: (GRID * PIX_M) / 1024, data: new Int16Array(elevBuf) },
+    elevation: { size: elevMeta.size, pixM: elevMeta.pixM, data: new Int16Array(elevBuf) },
   };
 }
 

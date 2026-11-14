@@ -38,9 +38,6 @@ export type SiteStats = {
   illumPct: number;
   commPct: number;
   longestDarkH: number;
-  longestLightH: number;
-  darkestStart: number | null;
-  firstLight: number | null;   // next sunrise after t0
   meanPower: number;
   score: number;
 };
@@ -49,9 +46,7 @@ export function statsFor(samples: Sample[], stepMin: number): SiteStats {
   const stepH = stepMin / 60;
   let lit = 0, comm = 0, power = 0;
   let run = 0, runLit = samples[0]?.lit ?? false;
-  let longestDark = 0, longestDarkStart: number | null = null;
-  let longestLight = 0;
-  let curStart = samples[0]?.t ?? 0;
+  let longestDark = 0;
 
   for (let i = 0; i < samples.length; i++) {
     const s = samples[i];
@@ -62,21 +57,12 @@ export function statsFor(samples: Sample[], stepMin: number): SiteStats {
     if (s.lit === runLit) {
       run++;
     } else {
-      if (!runLit && run * stepH > longestDark) {
-        longestDark = run * stepH;
-        longestDarkStart = curStart;
-      }
-      if (runLit && run * stepH > longestLight) longestLight = run * stepH;
+      if (!runLit) longestDark = Math.max(longestDark, run * stepH);
       runLit = s.lit;
       run = 1;
-      curStart = s.t;
     }
   }
-  if (!runLit && run * stepH > longestDark) {
-    longestDark = run * stepH;
-    longestDarkStart = curStart;
-  }
-  if (runLit && run * stepH > longestLight) longestLight = run * stepH;
+  if (!runLit) longestDark = Math.max(longestDark, run * stepH);
 
   const n = Math.max(1, samples.length);
   const illumPct = (lit / n) * 100;
@@ -87,17 +73,9 @@ export function statsFor(samples: Sample[], stepMin: number): SiteStats {
     illumPct,
     commPct,
     longestDarkH: longestDark,
-    longestLightH: longestLight,
-    darkestStart: longestDarkStart,
-    firstLight: nextLight(samples),
     meanPower,
     score: scoreOf(illumPct, commPct, longestDark, meanPower),
   };
-}
-
-function nextLight(samples: Sample[]): number | null {
-  for (const s of samples) if (s.lit) return s.t;
-  return null;
 }
 
 /** Mission-readiness score: sunlight dominates, comm is a gate, long darkness is penalised. */
@@ -219,9 +197,7 @@ export function commWindows(samples: Sample[], stepMin: number): CommWindow[] {
   return out;
 }
 
-/** The next few windows after `nowMs`, wrapping to the start of the series. */
+/** The next few windows after `nowMs`. Never wraps: showing a past window as upcoming would mislead. */
 export function upcomingWindows(windows: CommWindow[], nowMs: number, count = 4): CommWindow[] {
-  const after = windows.filter((w) => w.end >= nowMs);
-  if (after.length >= count) return after.slice(0, count);
-  return [...after, ...windows.slice(0, count - after.length)];
+  return windows.filter((w) => w.end >= nowMs).slice(0, count);
 }

@@ -1,7 +1,7 @@
 {
-  "name": "web",
+  "name": "sunlock",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -22,5 +22,6 @@
     "oxlint": "^1.90.0",
     "typescript": "~7.0.2",
     "vite": "^8.3.6"
-  }
+  },
+  "description": "Lunar south pole landing-window navigator (NASA Space Apps Challenge 2026)"
 }
