@@ -102,13 +102,12 @@ That is an independent statement of the effect we quantify in our report.
 | Converged bilinear, any part of disc | ~71% |
 | Gläser 2017 (20 m, 20 yr, 2 m, any part, optimised cluster) | 85.5–88.0% |
 
-Our shipped 86% is numerically inside the published band, but it is **disc-centre at a
-region-centre coordinate**, whereas the literature value is **any-part-of-disc at a searched
-cluster**. Two approximations offset: coarse sampling inflates by ~15 points, the stricter
-criterion deflates by ~8–12.
-
-The one directly comparable quantity is the **longest continuous darkness at the Shackleton
-peak: 3.5 days**, inside Gläser's "less than three and up to eight days".
+**Updated 15 Nov 2026.** The table above was computed before a 180° azimuth defect was found by
+validating against the LOLA visibility map; those values are superseded. After the fix, the
+model reproduces NASA's 18.6-year map at r = 0.995 (see `BENCHMARKS.md` §1), and the peak near
+Shackleton yields 73% over a 180-day window, with 11.5 days of continuous darkness. The 73% is a
+region centre, not a searched optimum — which is why it sits below the 85–88% reported for
+clusters 20–40 m wide.
 
 ---
 
