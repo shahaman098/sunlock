@@ -5,6 +5,7 @@ import TimelineStrip from "./components/TimelineStrip";
 import Porkchop from "./components/Porkchop";
 // three.js is only downloaded when someone opens the 3D view
 const Terrain3D = lazy(() => import("./components/Terrain3D"));
+const Globe3D = lazy(() => import("./components/Globe3D"));
 import { classify, loadFinder, type Finder, type FinderLimits } from "./lib/finder";
 import { buildShadowField, loadTerrain, computeShadow, customHorizon, unprojectFromUnit, type ElevationGrid, type ShadowField, type TerrainMeta } from "./lib/terrain";
 import { buildSkies, commWindows, raisedTerrain, siteSeries, statsFor, upcomingWindows } from "./lib/analysis";
@@ -235,7 +236,7 @@ export default function App() {
   const [sameSpotNote, setSameSpotNote] = useState<string | null>(null);
   /** choosing a site any other way clears the "same spot as" note */
   const setSelectedId = (id: string) => { setSameSpotNote(null); setSelectedIdRaw(id); };
-  const [stageView, setStageView] = useState<"map" | "finder" | "3d">("map");
+  const [stageView, setStageView] = useState<"map" | "finder" | "3d" | "globe">("map");
   const [finderData, setFinderData] = useState<Finder | null>(null);
   const [finderErr, setFinderErr] = useState<string | null>(null);
   const [limits, setLimits] = useState<FinderLimits>({ sunPct: 50, earthPct: 50, slopeDeg: 8, shadowKm: 5 });
@@ -599,6 +600,17 @@ export default function App() {
         })
       ),
     [namedSites, series, landIdx, missionSteps, arrayMode, lander, req]
+  );
+
+  /** Every site on the 3D Moon, with whether it is in sunlight at the scrubber time. */
+  const globeSites = useMemo(
+    () =>
+      sites.map((s) => {
+        const ser = s.id === "custom" ? customSeries : series.get(s.id) ?? [];
+        const kind: "nasa" | "mission" | "custom" = s.id === "custom" ? "custom" : s.mission ? "mission" : "nasa";
+        return { id: s.id, name: s.name, lat: s.lat, lon: s.lon, lit: ser[Math.min(landIdx, ser.length - 1)]?.lit ?? false, kind };
+      }),
+    [sites, series, customSeries, landIdx]
   );
 
   /** The design answer: the smallest battery and the smallest panel area that survive this landing. */
@@ -978,8 +990,22 @@ export default function App() {
               <button className={stageView === "map" ? "seg seg-on" : "seg"} onClick={() => setStageView("map")} aria-pressed={stageView === "map"}>Map</button>
               <button className={stageView === "finder" ? "seg seg-on" : "seg"} onClick={() => setStageView("finder")} aria-pressed={stageView === "finder"}>Site finder</button>
               <button className={stageView === "3d" ? "seg seg-on" : "seg"} onClick={() => setStageView("3d")} aria-pressed={stageView === "3d"}>3D terrain</button>
+              <button className={stageView === "globe" ? "seg seg-on" : "seg"} onClick={() => setStageView("globe")} aria-pressed={stageView === "globe"}>3D Moon</button>
             </div>
-            {stageView === "3d" ? (
+            {stageView === "globe" ? (
+              <Suspense fallback={<div className="t3d-msg">Loading the 3D Moon…</div>}>
+                <Globe3D
+                  sites={globeSites}
+                  selectedId={selected?.id ?? null}
+                  sky={currentSky}
+                  dateLabel={fmtDate(currentMs)}
+                  hillshade={hillshade}
+                  field={field}
+                  shadow={shadow}
+                  onSelect={(id) => setSelectedId(id)}
+                />
+              </Suspense>
+            ) : stageView === "3d" ? (
               selected && reading && selected.lat <= -80 && elevation ? (
                 <Suspense fallback={<div className="t3d-msg">Loading the 3D view…</div>}>
                   <Terrain3D

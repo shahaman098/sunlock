@@ -960,6 +960,18 @@
   flex: none; padding: 6px var(--s-15); border-top: 1px solid var(--hair);
   font-family: var(--body); font-size: var(--fs-label); line-height: 1.5; color: var(--muted); background: var(--panel-solid);
 }
+.globe-view { position: relative; flex: 1 1 auto; min-height: 0; }
+.globe-view .t3d-canvas { position: absolute; inset: 0; }
+.globe-hud {
+  position: absolute; left: var(--s-15); bottom: var(--s-1); display: flex; flex-direction: column; gap: 2px; pointer-events: none;
+  font-family: var(--body); font-size: var(--fs-label); color: var(--muted); text-shadow: 0 0 6px #000, 0 0 2px #000;
+}
+.globe-hud b { font-family: var(--mono); font-weight: 500; color: var(--ink); }
+.globe-k { font-family: var(--mono); font-size: var(--fs-label); letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink); }
+.globe-tip {
+  position: absolute; z-index: 5; pointer-events: none; padding: 4px 8px; white-space: nowrap;
+  font-family: var(--body); font-size: var(--fs-label); color: var(--ink); background: rgba(0, 0, 0, 0.85); border: 1px solid var(--hair);
+}
 .t3d-msg {
   position: absolute; inset: 0; display: grid; place-items: center; padding: var(--s-3);
   font-family: var(--body); font-size: var(--fs-2); line-height: 1.6; color: var(--muted); text-align: center; background: #000;
