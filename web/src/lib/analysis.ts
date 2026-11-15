@@ -5,6 +5,8 @@ export type Sample = {
   lit: boolean;
   comm: boolean;
   sunElev: number;
+  /** degrees from north, for panels that do not track the Sun */
+  sunAz: number;
   earthElev: number;
   /** degrees of clearance between Earth and the local skyline (negative = blocked) */
   earthMargin: number;
@@ -27,6 +29,7 @@ export function siteSeries(site: Site, skies: Sky[]): Sample[] {
       lit: r.lit,
       comm: r.comm,
       sunElev: r.sunElev,
+      sunAz: r.sunAz,
       earthElev: r.earthElev,
       earthMargin: r.earthElev - r.earthHorizon,
       power: r.lit ? Math.max(0, Math.sin((r.sunElev * Math.PI) / 180)) : 0,

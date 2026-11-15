@@ -1,8 +1,45 @@
-import { useEffect, useMemo, useRef } from "react";
-import { projectToUnit, type ShadowField, type ShadowView } from "../lib/terrain";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type Dispatch, type ReactNode, type SetStateAction } from "react";
+import { projectToUnit, unprojectFromUnit, type ElevationGrid, type ShadowField, type ShadowView } from "../lib/terrain";
 import type { Site, Sky } from "../lib/selene";
 
 const SIZE = 1024;
+
+export type MapLayers = { shadow: boolean; labels: boolean; refs: boolean; grid: boolean };
+const ALL_LAYERS: MapLayers = { shadow: true, labels: true, refs: true, grid: true };
+
+/** The map is a polar stereographic disc from the pole out to 80°S, 608 km across. */
+const MAP_KM = 608;
+const CANVAS_FRAC = 0.948; // the canvas is inset inside the wrap to leave room for the outer ring
+const GRID_LATS = [-88, -86, -84, -82];
+const GRID_LONS = Array.from({ length: 12 }, (_, i) => i * 30);
+
+const LAYER_DEFS: [keyof MapLayers, string, string][] = [
+  ["shadow", "Sunlight and shadow", "Live, from LRO LOLA terrain"],
+  ["labels", "Site names", "NASA Artemis III sites"],
+  ["refs", "Older sites", "Dropped by NASA in 2024"],
+  ["grid", "Latitude and longitude", "Every 2° and every 30°"],
+];
+
+/**
+ * What is under the pointer. Kept outside React state so moving the mouse
+ * re-renders only the status bar, not the map or the rest of the console.
+ */
+type Cursor = { lat: number; lon: number; elevM: number | null; lit: boolean | null } | null;
+let cursor: Cursor = null;
+const cursorSubs = new Set<() => void>();
+const setCursor = (c: Cursor) => {
+  cursor = c;
+  cursorSubs.forEach((f) => f());
+};
+const subscribeCursor = (f: () => void) => {
+  cursorSubs.add(f);
+  return () => { cursorSubs.delete(f); };
+};
+
+const pct = (lat: number, lon: number) => {
+  const p = projectToUnit(lat, lon);
+  return { x: ((p.x + 1) / 2) * 100, y: ((p.y + 1) / 2) * 100 };
+};
 
 type Props = {
   hillshade: HTMLImageElement | null;
@@ -14,61 +51,84 @@ type Props = {
   sky: Sky | null;
   onPick?: (u: { x: number; y: number }) => void;
   custom?: { lat: number; lon: number } | null;
+  layers?: MapLayers;
+  elevation?: ElevationGrid | null;
+  /** corner read-outs drawn over the map square */
+  children?: ReactNode;
 };
 
-type Placed = { site: Site; x: number; y: number; lx: number; ly: number; anchor: "start" | "end" };
+type Placed = { site: Site; x: number; y: number; lx: number; ly: number; anchor: "start" | "end"; hidden?: boolean };
 
-/** Greedy label placement so site names never overlap. */
-function layout(sites: Site[]): Placed[] {
+/**
+ * Greedy label placement so site names never overlap. NASA's current regions are
+ * placed first; a reference site whose label cannot fit is drawn without one
+ * (its name still shows when it is selected).
+ */
+function layout(sites: Site[], selectedId: string): Placed[] {
+  const prio = (s: Site) => (s.id === selectedId ? 0 : s.current === false ? 2 : 1);
   const items = sites
     .map((site) => {
       const p = projectToUnit(site.lat, site.lon);
       return { site, x: ((p.x + 1) / 2) * 100, y: ((p.y + 1) / 2) * 100 };
     })
-    .sort((a, b) => a.y - b.y);
+    .sort((a, b) => prio(a.site) - prio(b.site) || a.y - b.y);
 
-  const boxes: { x0: number; y0: number; x1: number; y1: number }[] = [];
+  // every pin is an obstacle, so labels never sit on another site's marker
+  // (the selected pin carries a halo and a reticle, so it blocks a wider square)
+  const boxes: { x0: number; y0: number; x1: number; y1: number }[] = items.map((it) => {
+    const r = it.site.id === selectedId ? 4.8 : 2.0;
+    return { x0: it.x - r, y0: it.y - r, x1: it.x + r, y1: it.y + r };
+  });
   const out: Placed[] = [];
 
   for (const it of items) {
-    const w = it.site.name.length * 0.62;
-    const h = 2.6;
-    const options: [number, number, "start" | "end"][] = [
-      [2.4, 0.8, "start"],
-      [-2.4, 0.8, "end"],
-      [2.4, -1.6, "start"],
-      [-2.4, -1.6, "end"],
-      [0, 2.6, "start"],
-      [0, -2.8, "start"],
-    ];
+    if (it.site.current === false && it.site.id !== selectedId) {
+      out.push({ ...it, lx: it.x, ly: it.y, anchor: "start", hidden: true });
+      continue;
+    }
+    const w = it.site.name.length * 1.12 + 0.9;
+    const gap = it.site.id === selectedId ? 5.4 : 2.9;
+    // Candidate spots, nearest first: beside the pin, then stepping further above and below
+    // (a leader line joins a label to its pin once it moves away).
+    const options: [number, number, "start" | "end"][] = [[gap, 0.8, "start"], [-gap, 0.8, "end"]];
+    for (const dy of [-1.8, 3.4, -4.2, 6.0, -6.8, 8.6, -9.4, 11.2]) {
+      const dx = Math.abs(dy) < 3 ? gap : Math.max(1.6, gap - 2.4);
+      options.push([dx, dy, "start"], [-dx, dy, "end"]);
+    }
+    type Box = { x0: number; y0: number; x1: number; y1: number };
+    const boxAt = ([dx, dy, anchor]: [number, number, "start" | "end"]): Box => {
+      const lx = it.x + dx, ly = it.y + dy;
+      const x0 = anchor === "start" ? lx : lx - w;
+      return { x0, y0: ly - 2.1, x1: x0 + w, y1: ly + 0.9 };
+    };
+    // overlap area with everything already placed; leaving the map is never allowed
+    const cost = (box: Box) => {
+      if (box.x0 < 1 || box.x1 > 99 || box.y0 < 1 || box.y1 > 99) return Infinity;
+      let a = 0;
+      for (const b of boxes) a += Math.max(0, Math.min(box.x1, b.x1) - Math.max(box.x0, b.x0)) * Math.max(0, Math.min(box.y1, b.y1) - Math.max(box.y0, b.y0));
+      return a;
+    };
     let best = options[0];
-    let bestBox = null as null | { x0: number; y0: number; x1: number; y1: number };
-    for (const [dx, dy, anchor] of options) {
-      const lx = it.x + dx;
-      const ly = it.y + dy;
-      const x0 = anchor === "start" ? lx : lx - w;
-      const box = { x0, y0: ly - h / 2, x1: x0 + w, y1: ly + h / 2 };
-      const hit = boxes.some((b) => !(box.x1 < b.x0 || box.x0 > b.x1 || box.y1 < b.y0 || box.y0 > b.y1));
-      if (!hit) {
-        best = [dx, dy, anchor];
-        bestBox = box;
-        break;
-      }
+    let bestBox: Box | null = null;
+    let bestCost = Infinity;
+    for (const o of options) {
+      const box = boxAt(o);
+      const c = cost(box);
+      if (c === 0) { best = o; bestBox = box; bestCost = 0; break; }
+      if (c < bestCost) { best = o; bestBox = box; bestCost = c; }
     }
-    if (!bestBox) {
-      const [dx, dy, anchor] = best;
-      const lx = it.x + dx;
-      const ly = it.y + dy;
-      const x0 = anchor === "start" ? lx : lx - w;
-      bestBox = { x0, y0: ly - h / 2, x1: x0 + w, y1: ly + h / 2 };
+    if (bestCost > 0 && it.site.current === false && it.site.id !== selectedId) {
+      out.push({ ...it, lx: it.x, ly: it.y, anchor: "start", hidden: true });
+      continue;
     }
+    if (!bestBox) bestBox = boxAt(best);
     boxes.push(bestBox);
     out.push({ ...it, lx: it.x + best[0], ly: it.y + best[1], anchor: best[2] });
   }
   return out;
 }
 
-export default function MapView({ hillshade, field, shadow, sites, selectedId, onSelect, sky, onPick, custom }: Props) {
+export default function MapView({ hillshade, field, shadow, sites, selectedId, onSelect, sky, onPick, custom, layers = ALL_LAYERS, elevation, children }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const overlay = useMemo(() => {
@@ -99,13 +159,13 @@ export default function MapView({ hillshade, field, shadow, sites, selectedId, o
     if (!ctx) return;
     ctx.clearRect(0, 0, SIZE, SIZE);
     ctx.drawImage(hillshade, 0, 0, SIZE, SIZE);
-    if (overlay) {
+    if (overlay && layers.shadow) {
       ctx.imageSmoothingEnabled = true;
       ctx.drawImage(overlay, 0, 0, SIZE, SIZE);
     }
-  }, [hillshade, overlay]);
+  }, [hillshade, overlay, layers.shadow]);
 
-  const placed = useMemo(() => layout(sites), [sites]);
+  const placed = useMemo(() => layout(sites, selectedId), [sites, selectedId]);
   const sunBearing = sky ? sky.subSun.lon : 0;
   const sunElev = sky ? -sky.subSun.lat : 0;
 
@@ -116,7 +176,27 @@ export default function MapView({ hillshade, field, shadow, sites, selectedId, o
         width={SIZE}
         height={SIZE}
         className="map-canvas"
-        aria-label="Sunlit terrain map of the lunar south pole. Click anywhere to analyse that point."
+        aria-label="Map of sunlight and shadow at the lunar south pole. Click anywhere to check that spot."
+        onMouseMove={(e) => {
+          const rect = e.currentTarget.getBoundingClientRect();
+          const fx = (e.clientX - rect.left) / rect.width;
+          const fy = (e.clientY - rect.top) / rect.height;
+          const { lat, lon, inside } = unprojectFromUnit({ x: fx * 2 - 1, y: fy * 2 - 1 });
+          if (!inside) { setCursor(null); return; }
+          const cell = (n: number) => {
+            const x = Math.min(n - 1, Math.max(0, Math.floor(fx * n)));
+            const y = Math.min(n - 1, Math.max(0, Math.floor(fy * n)));
+            return y * n + x;
+          };
+          const fi = field ? cell(field.size) : -1;
+          setCursor({
+            lat,
+            lon,
+            elevM: elevation ? elevation.data[cell(elevation.size)] : null,
+            lit: field && shadow && field.mask[fi] ? shadow.lit[fi] === 1 : null,
+          });
+        }}
+        onMouseLeave={() => setCursor(null)}
         onClick={(e) => {
           if (!onPick) return;
           const rect = e.currentTarget.getBoundingClientRect();
@@ -127,6 +207,31 @@ export default function MapView({ hillshade, field, shadow, sites, selectedId, o
       />
 
       <svg className="map-overlay" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden>
+        {layers.grid && (
+          <g className="graticule">
+            {GRID_LATS.map((lat) => (
+              <circle key={lat} cx="50" cy="50" r={50 - pct(lat, 0).y} />
+            ))}
+            {GRID_LONS.map((lon) => {
+              const a = pct(-88, lon), b = pct(-80.02, lon);
+              return <line key={lon} x1={a.x} y1={a.y} x2={b.x} y2={b.y} />;
+            })}
+            <line x1="49" y1="50" x2="51" y2="50" className="pole" />
+            <line x1="50" y1="49" x2="50" y2="51" className="pole" />
+            {GRID_LATS.map((lat) => {
+              const p = pct(lat, 45);
+              return <text key={lat} x={p.x + 0.5} y={p.y - 0.5}>{-lat}°S</text>;
+            })}
+            {[0, 90, 180, 270].map((lon) => {
+              const p = pct(-81.1, lon);
+              return (
+                <text key={lon} x={p.x + (lon === 0 || lon === 180 ? 0.7 : 0)} y={p.y + (lon === 90 || lon === 270 ? -0.7 : 0.6)} textAnchor={lon === 90 ? "end" : "start"}>
+                  {lon === 0 ? "0°" : lon === 180 ? "180°" : `${lon}°E`}
+                </text>
+              );
+            })}
+          </g>
+        )}
         {custom && (() => {
           const p = projectToUnit(custom.lat, custom.lon);
           const cx = ((p.x + 1) / 2) * 100;
@@ -139,20 +244,30 @@ export default function MapView({ hillshade, field, shadow, sites, selectedId, o
             </g>
           );
         })()}
-        {placed.map(({ site, x, y, lx, ly, anchor }) => {
+        {placed.map(({ site, x, y, lx, ly, anchor, hidden }) => {
           const active = site.id === selectedId;
+          const ref = site.current === false;
           return (
             <g key={site.id} onClick={() => onSelect(site.id)} className="marker">
               {active && <circle cx={x} cy={y} r={3.2} className="pin-halo" />}
-              <circle cx={x} cy={y} r={active ? 1.9 : 1.25} className={active ? "pin pin-active" : "pin"} />
-              <text
+              {active && (
+                <path
+                  className="pin-reticle"
+                  d={`M${x - 4.6},${y - 3.2}v-1.4h1.4 M${x + 3.2},${y - 4.6}h1.4v1.4 M${x + 4.6},${y + 3.2}v1.4h-1.4 M${x - 3.2},${y + 4.6}h-1.4v-1.4`}
+                />
+              )}
+              <circle cx={x} cy={y} r={active ? 1.9 : ref ? 0.9 : 1.25} className={active ? "pin pin-active" : ref ? "pin pin-ref" : "pin"} />
+              {!hidden && (layers.labels || active) && Math.abs(ly - y) > 3 && (
+                <line x1={x} y1={y} x2={lx} y2={ly + (ly > y ? -1.4 : 0.6)} className="pin-leader" />
+              )}
+              {!hidden && (layers.labels || active) && <text
                 x={lx}
                 y={ly}
                 textAnchor={anchor}
-                className={active ? "pin-label pin-label-active" : "pin-label"}
+                className={active ? "pin-label pin-label-active" : ref ? "pin-label pin-label-ref" : "pin-label"}
               >
                 {site.name}
-              </text>
+              </text>}
             </g>
           );
         })}
@@ -169,7 +284,7 @@ export default function MapView({ hillshade, field, shadow, sites, selectedId, o
             <circle r="0.9" className="dial-centre" />
           </svg>
           <span className="dial-label">
-            SUN {sunElev >= 0 ? "+" : ""}{sunElev.toFixed(1)}°
+            Sun {sunElev >= 0 ? "+" : ""}{sunElev.toFixed(1)}° high
           </span>
         </div>
       )}
@@ -184,10 +299,96 @@ export default function MapView({ hillshade, field, shadow, sites, selectedId, o
         </div>
       )}
 
-      <div className="map-legend">
-        <span className="dot dot-lit" /> sunlit
-        <span className="dot dot-dark" /> shadowed
-        <span className="map-hint">click the terrain to analyse any point</span>
+      <div className="map-scale" style={{ width: `${((100 / MAP_KM) * CANVAS_FRAC * 100).toFixed(2)}%` }} aria-hidden>
+        <span>100 km</span>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/**
+ * Status bar under the map: legend, what is under the pointer, and the layer list.
+ * Nothing here sits on top of the terrain.
+ */
+export function MapStatusBar({ layers, onLayers }: { layers: MapLayers; onLayers: Dispatch<SetStateAction<MapLayers>> }) {
+  const cur = useSyncExternalStore(subscribeCursor, () => cursor);
+  const [open, setOpen] = useState(false);
+  const boxRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => {
+      if (!boxRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const hidden = LAYER_DEFS.filter(([k]) => !layers[k]).length;
+
+  return (
+    <div className="map-status">
+      <div className="ms-legend">
+        <span className="dot dot-lit" /> Sunlight
+        <span className="dot dot-dark" /> Shadow
+      </div>
+      <div className="ms-cursor">
+        {cur ? (
+          <>
+            <span className="ms-v">{Math.abs(cur.lat).toFixed(2)}°S</span>
+            <span className="ms-v">{cur.lon.toFixed(1).padStart(5, "\u2007")}°E</span>
+            {cur.elevM !== null && (
+              <>
+                <span className="ms-k">Height</span>
+                <span className="ms-v ms-wide">{cur.elevM < 0 ? "\u2212" : "+"}{Math.abs(cur.elevM).toLocaleString("en-GB")} m</span>
+              </>
+            )}
+            {cur.lit !== null && <span className={cur.lit ? "ms-state ms-lit" : "ms-state"}>{cur.lit ? "In sunlight" : "In shadow"}</span>}
+          </>
+        ) : (
+          <span className="ms-hint">
+            <span className="hint-mouse">Point at the map for coordinates, click to check any spot</span>
+            <span className="hint-touch">Tap the map to check any spot</span>
+          </span>
+        )}
+      </div>
+      <div className="layers" ref={boxRef}>
+        <button className="layers-toggle" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-controls="layer-list">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" aria-hidden>
+            <path d="M8,2 L14,5 L8,8 L2,5Z M2,8 L8,11 L14,8 M2,11 L8,14 L14,11" />
+          </svg>
+          Layers{hidden > 0 && <span className="layers-count">{LAYER_DEFS.length - hidden}/{LAYER_DEFS.length}</span>}
+        </button>
+        {open && (
+          <ul className="layers-list" id="layer-list">
+            {LAYER_DEFS.map(([key, name, src]) => (
+              <li key={key}>
+                <button
+                  className="layer"
+                  aria-pressed={layers[key]}
+                  title={layers[key] ? `Hide ${name.toLowerCase()}` : `Show ${name.toLowerCase()}`}
+                  onClick={() => onLayers((l) => ({ ...l, [key]: !l[key] }))}
+                >
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <path d="M1.5,8 C3.5,4.5 5.6,3.2 8,3.2 S12.5,4.5 14.5,8 C12.5,11.5 10.4,12.8 8,12.8 S3.5,11.5 1.5,8Z" />
+                    <circle cx="8" cy="8" r="2" />
+                    {!layers[key] && <path d="M2.5,13.5 L13.5,2.5" />}
+                  </svg>
+                  <span className="layer-name">{name}</span>
+                  <span className="layer-src">{src}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   );

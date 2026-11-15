@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import type { Sample } from "../lib/analysis";
 
+const BAR_TOP = 0;
+const COMM_H = 10;
+const COMM_GAP = 3;
+
 type Props = {
   samples: Sample[];
   currentMs: number;
@@ -13,7 +17,7 @@ type Props = {
  * (~17k rects), so it is cached to an offscreen canvas and only the playhead
  * is redrawn while scrubbing.
  */
-export default function TimelineStrip({ samples, currentMs, onScrub, height = 96 }: Props) {
+export default function TimelineStrip({ samples, currentMs, onScrub, height = 64 }: Props) {
   const ref = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const ribbon = useRef<HTMLCanvasElement | null>(null);
@@ -41,39 +45,33 @@ export default function TimelineStrip({ samples, currentMs, onScrub, height = 96
     const t1 = samples[samples.length - 1].t;
     const span = t1 - t0 || 1;
     const xOf = (t: number) => ((t - t0) / span) * w;
-    const barTop = 22;
-    const barH = h - 46;
+    const barTop = BAR_TOP;
+    const barH = h - BAR_TOP - COMM_GAP - COMM_H;
 
     for (let i = 0; i < samples.length - 1; i++) {
       const a = xOf(samples[i].t);
       const b = xOf(samples[i + 1].t);
-      ctx.fillStyle = samples[i].lit ? "#f2b45c" : "#101728";
+      ctx.fillStyle = samples[i].lit ? "#f5af0c" : "#232327";
       ctx.fillRect(a, barTop, Math.max(0.6, b - a), barH);
-      ctx.fillStyle = samples[i].comm ? "#3fc7f0" : "#1a2233";
-      ctx.fillRect(a, barTop + barH + 4, Math.max(0.6, b - a), 8);
+      ctx.fillStyle = samples[i].comm ? "#42dbc2" : "#232327";
+      ctx.fillRect(a, barTop + barH + COMM_GAP, Math.max(0.6, b - a), COMM_H);
     }
 
-    // day grid + labels
-    const start = new Date(t0);
+    // week and month lines only; the dates are on the shared axis above the ribbon
     const dayMs = 86400000;
+    const start = new Date(t0);
     let day = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate()));
     if (day.getTime() < t0) day = new Date(day.getTime() + dayMs);
-    ctx.font = "10px ui-monospace, SFMono-Regular, Menlo, monospace";
     for (let d = day; d.getTime() <= t1; d = new Date(d.getTime() + dayMs)) {
-      const x = xOf(d.getTime());
-      ctx.strokeStyle = "rgba(90,110,140,0.18)";
+      const month = d.getUTCDate() === 1;
+      if (!month && d.getUTCDay() !== 1) continue;
+      const x = Math.round(xOf(d.getTime())) + 0.5;
+      ctx.strokeStyle = month ? "rgba(0,0,0,0.75)" : "rgba(0,0,0,0.28)";
+      ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(x, barTop - 4);
-      ctx.lineTo(x, barTop + barH + 12);
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, h);
       ctx.stroke();
-      if (d.getUTCDate() === 1 || d.getTime() === day.getTime()) {
-        ctx.fillStyle = "rgba(160,178,204,0.75)";
-        ctx.fillText(
-          d.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" }),
-          x + 3,
-          h - 4
-        );
-      }
     }
   };
 
@@ -107,17 +105,10 @@ export default function TimelineStrip({ samples, currentMs, onScrub, height = 96
     const t0 = samples[0].t;
     const t1 = samples[samples.length - 1].t;
     const px = ((currentMs - t0) / (t1 - t0 || 1)) * w * dpr;
-    const barTop = 22 * dpr;
-    ctx.strokeStyle = "#ffffff";
-    ctx.lineWidth = 1.5 * dpr;
-    ctx.beginPath();
-    ctx.moveTo(px, barTop - 8 * dpr);
-    ctx.lineTo(px, barTop + (h - 46) * dpr + 16 * dpr);
-    ctx.stroke();
-    ctx.fillStyle = "#ffffff";
-    ctx.beginPath();
-    ctx.arc(px, barTop - 8 * dpr, 3 * dpr, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.fillStyle = "#000";
+    ctx.fillRect(Math.round(px) - 2 * dpr, 0, 4 * dpr, h * dpr);
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(Math.round(px) - dpr, 0, 2 * dpr, h * dpr);
   }, [currentMs, samples, height, resizeTick]);
 
   const handle = (clientX: number) => {

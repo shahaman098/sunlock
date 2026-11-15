@@ -36,31 +36,37 @@ export type ElevationGrid = {
   data: Int16Array; // metres
 };
 
+/**
+ * Load what the first frame needs (site data and the shadow grid). The elevation grid is
+ * only needed for clicked points and the cursor read-out, so it arrives as a separate
+ * promise and never holds up the map.
+ */
 export async function loadTerrain(): Promise<{
   meta: TerrainMeta;
   shadows: Uint8Array;
-  elevation: ElevationGrid;
+  elevation: Promise<ElevationGrid>;
 }> {
-  const [metaRes, shadowRes, elevRes] = await Promise.all([
-    fetch(`${import.meta.env.BASE_URL}terrain/sites.json`),
-    fetch(`${import.meta.env.BASE_URL}terrain/shadowgrid.bin`),
-    fetch(`${import.meta.env.BASE_URL}terrain/elevgrid.bin`),
+  const base = import.meta.env.BASE_URL;
+  const elevFetch = fetch(`${base}terrain/elevgrid.bin`);
+  const [metaRes, shadowRes] = await Promise.all([
+    fetch(`${base}terrain/sites.json`),
+    fetch(`${base}terrain/shadowgrid.bin`),
   ]);
-  for (const [name, res] of [["sites.json", metaRes], ["shadowgrid.bin", shadowRes], ["elevgrid.bin", elevRes]] as const) {
+  for (const [name, res] of [["sites.json", metaRes], ["shadowgrid.bin", shadowRes]] as const) {
     if (!res.ok) throw new Error(`${name} failed: HTTP ${res.status}`);
   }
   const meta: TerrainMeta = await metaRes.json();
   const buf = await shadowRes.arrayBuffer();
-  const elevBuf = await elevRes.arrayBuffer();
   const elevMeta = meta.elevation ?? { size: 1024, pixM: (GRID * PIX_M) / 1024 };
-  if (elevBuf.byteLength !== elevMeta.size * elevMeta.size * 2) {
-    throw new Error(`elevgrid.bin size mismatch: ${elevBuf.byteLength} bytes`);
-  }
-  return {
-    meta,
-    shadows: new Uint8Array(buf),
-    elevation: { size: elevMeta.size, pixM: elevMeta.pixM, data: new Int16Array(elevBuf) },
-  };
+  const elevation = elevFetch.then(async (res) => {
+    if (!res.ok) throw new Error(`elevgrid.bin failed: HTTP ${res.status}`);
+    const elevBuf = await res.arrayBuffer();
+    if (elevBuf.byteLength !== elevMeta.size * elevMeta.size * 2) {
+      throw new Error(`elevgrid.bin size mismatch: ${elevBuf.byteLength} bytes`);
+    }
+    return { size: elevMeta.size, pixM: elevMeta.pixM, data: new Int16Array(elevBuf) };
+  });
+  return { meta, shadows: new Uint8Array(buf), elevation };
 }
 
 /** Convert normalised map coordinates (-1..1, pole-centred) back to lat/lon. */
@@ -95,10 +101,9 @@ export function customHorizon(grid: ElevationGrid, lat: number, lon: number) {
   const R = 1737400;
   const horizon: number[] = [];
   for (let a = 0; a < 360; a++) {
-    const ang = ((a - lon) * Math.PI) / 180;
-    // image-space direction matching geographic azimuth a; negated because the
-    // raster's axes run opposite to the standard stereographic convention
-    const dx = -Math.sin(ang);
+    // geographic azimuth -> image direction: north (az 0) is (sin lon, -cos lon), east is (cos lon, sin lon)
+    const ang = ((a + lon) * Math.PI) / 180;
+    const dx = Math.sin(ang);
     const dy = -Math.cos(ang);
     let best = -1e9;
     for (let k = 1; k <= 100; k++) {

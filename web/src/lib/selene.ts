@@ -57,7 +57,9 @@ export function selenographic(v: Vec): { lat: number; lon: number } {
 export type Sky = {
   t: number;
   sun: Vec;   // unit vector, lunar body-fixed
-  earth: Vec; // unit vector, lunar body-fixed
+  earth: Vec; // unit vector from the Moon's centre, lunar body-fixed
+  /** Earth's distance in lunar radii (~221), for the parallax of an observer on the surface */
+  earthDistR: number;
   subSun: { lat: number; lon: number };
   subEarth: { lat: number; lon: number };
 };
@@ -69,12 +71,14 @@ export function skyAt(date: Date): Sky {
   const f = lunarFrame(date);
   const sunRel = unit({ x: sun.x - moon.x, y: sun.y - moon.y, z: sun.z - moon.z });
   const earthRel = unit({ x: -moon.x, y: -moon.y, z: -moon.z });
+  const earthDistR = (Math.hypot(moon.x, moon.y, moon.z) * A.KM_PER_AU) / 1737.4;
   const sunF = toFrame(sunRel, f);
   const earthF = toFrame(earthRel, f);
   return {
     t: date.getTime(),
     sun: sunF,
     earth: earthF,
+    earthDistR,
     subSun: selenographic(sunF),
     subEarth: selenographic(earthF),
   };
@@ -88,6 +92,38 @@ export type Site = {
   elevationM: number;
   blurb: string;
   horizonDeg: number[];
+  /** a past or planned landing (Apollo, CLPS, other agencies), shown for comparison */
+  mission?: boolean;
+  /** a planned mission whose exact landing point is not published: the target area only */
+  approx?: boolean;
+  group?: string;
+  /** false when the horizon is the edge of the lunar sphere rather than LOLA terrain */
+  terrain?: boolean;
+  /** Artemis III region code (Wueller et al. 2026) and whether it is on NASA's 2024 list */
+  region?: string;
+  current?: boolean;
+  publishedSite?: string;
+  slopeDeg?: number;
+  /** 18.6-year statistics computed at build time (web/scripts/select-sites.mjs) */
+  longRun?: {
+    sunPct: number;
+    sunRangePct: [number, number];
+    earthPct: number;
+    longestNightH: number;
+    nasaSunPct: number | null;
+    nasaEarthPct: number | null;
+    nasaDiffPp: number | null;
+    agrees: boolean | null;
+    nSites: number;
+    nAgree: number;
+    longestBlackoutH?: number;
+    sunAndEarthPct?: number;
+    poleKm?: number;
+    /** km to NASA's nearest permanently shadowed pixel, ">30" if none within 30 km, null outside the map */
+    psrKm?: number | string | null;
+  };
+  /** horizons with the panels raised above the ground (0, 2, 10 m) */
+  heights?: { heightM: number; sunPct: number; horizonDeg: number[] }[];
 };
 
 export function siteBasis(lat: number, lon: number) {
@@ -118,6 +154,13 @@ export function horizonAt(profile: number[], az: number) {
 /** Earth's mean angular radius as seen from the Moon, degrees (~0.95). */
 export const EARTH_ANGULAR_RADIUS = 0.95;
 
+/**
+ * The Sun's mean angular radius, degrees. A site counts as sunlit while any part
+ * of the solar disc clears the horizon: the definition NASA's LOLA illumination
+ * maps use, and the one SUNLOCK is validated against.
+ */
+export const SUN_ANGULAR_RADIUS = 0.266;
+
 export type Reading = {
   sunElev: number;
   sunAz: number;
@@ -129,16 +172,26 @@ export type Reading = {
   comm: boolean;
 };
 
+/**
+ * Direction to Earth from a point on the surface (topocentric). Earth is only ~221 lunar
+ * radii away, so seen from the surface it sits up to 0.26 deg lower than seen from the
+ * Moon's centre; JPL Horizons applies the same correction.
+ */
+export function earthFromSurface(sky: Sky, up: Vec): Vec {
+  const k = sky.earthDistR;
+  return unit({ x: sky.earth.x * k - up.x, y: sky.earth.y * k - up.y, z: sky.earth.z * k - up.z });
+}
+
 export function readSite(site: Site, sky: Sky, basis = siteBasis(site.lat, site.lon)): Reading {
   const s = lookAngles(sky.sun, basis);
-  const e = lookAngles(sky.earth, basis);
+  const e = lookAngles(earthFromSurface(sky, basis.up), basis);
   const sh = horizonAt(site.horizonDeg, s.az);
   const eh = horizonAt(site.horizonDeg, e.az);
   return {
     sunElev: s.elev,
     sunAz: s.az,
     sunHorizon: sh,
-    lit: s.elev > sh,
+    lit: s.elev + SUN_ANGULAR_RADIUS > sh,
     earthElev: e.elev,
     earthAz: e.az,
     earthHorizon: eh,

@@ -65,19 +65,18 @@ function elevAt(x, y) {
 
 /**
  * Horizon elevation (degrees) looking along geographic azimuth `az`.
- * In the stereographic image, geographic north is (-sin lon, +cos lon) and
- * east is (cos lon, +sin lon); combining them gives (sin(az-lon), cos(az-lon)).
+ * In this image geographic north (away from the pole) is (sin lon, -cos lon) and
+ * east is (cos lon, sin lon); combining them gives (sin(az+lon), -cos(az+lon)).
  */
 function horizonAlong(x, y, lon, az, maxSteps, stepPx) {
   const e0 = elevAt(x, y);
   if (e0 === null) return 0;
-  // The raster's line/sample axes run opposite to the standard stereographic
-  // x/y convention for this product, so the image-space direction is negated.
-  // Validated against NASA's LOLA visibility map (PGDA product 69): without this
-  // the horizon is read 180 degrees from the Sun's azimuth and Cabeus, a
-  // permanently shadowed crater, comes out 30% lit instead of 0%.
-  const a = (az - lon) * D;
-  const dx = -Math.sin(a);
+  // geographic azimuth -> image direction: north (az 0) is (sin lon, -cos lon), east is (cos lon, sin lon), consistent with project() above.
+  // Checked against NASA's LOLA maps (PGDA product 69): the Sun map fixes north/south
+  // (an earlier 180-degree error) and the Earth map fixes east/west, which the Sun map
+  // cannot see because solar elevation is symmetric about the site's meridian.
+  const a = (az + lon) * D;
+  const dx = Math.sin(a);
   const dy = -Math.cos(a);
   let best = -1e9;
   let px = x;
@@ -282,63 +281,22 @@ console.error(`wrote elevgrid.bin (${EG}x${EG}, ${((EG * EG * 2) / 1e6).toFixed(
 console.error("wrote shadowgrid.bin");
 
 // ------------------------------------------------------------ sites
-// Centres of NASA's Artemis III candidate landing regions (published 2022 list).
-const SITES = [
-  { id: "peak-shackleton", name: "Peak near Shackleton", lat: -89.45, lon: 222.7, blurb: "High ground beside Shackleton; the classic near-continuous-sunlight candidate." },
-  { id: "connecting-ridge", name: "Connecting Ridge", lat: -89.30, lon: 220.0, blurb: "Broad ridge linking Shackleton and de Gerlache. Sun and Earth-view compromise." },
-  { id: "de-gerlache-rim", name: "de Gerlache Rim", lat: -88.50, lon: 272.1, blurb: "Crater rim bordering permanently shadowed volatile traps." },
-  { id: "haworth", name: "Haworth", lat: -87.40, lon: 355.1, blurb: "Rugged highland terrain near the 87th parallel." },
-  { id: "malapert", name: "Malapert Massif", lat: -86.00, lon: 0.0, blurb: "A 5 km-high massif with an unbroken view of Earth." },
-  { id: "leibnitz-beta", name: "Leibnitz Beta Plateau", lat: -85.00, lon: 329.7, blurb: "Elevated plateau west of the pole with long sightlines." },
-  { id: "nobile-rim", name: "Nobile Rim 1", lat: -85.60, lon: 53.0, blurb: "Rim terrain north-east of the pole near Amundsen." },
-  { id: "amundsen-rim", name: "Amundsen Rim", lat: -84.50, lon: 82.8, blurb: "Outer highland rim, deeper into the monthly sun cycle." },
-  { id: "cabeus-b", name: "Cabeus B", lat: -82.40, lon: 305.6, blurb: "Far from the pole: steep sun angles, long dark intervals." },
-];
-
-const chosen = [];
-const siteProfiles = SITES.map((s) => {
-  // snap to the best local high ground within the ~5 km region footprint,
-  // keeping regions distinct (>= 4 km apart)
-  let { x, y } = project(s.lat, s.lon);
-  let best = -1e9, bx = x, by = y;
-  for (let dy = -60; dy <= 60; dy++) {
-    for (let dx = -60; dx <= 60; dx++) {
-      const px = Math.round(x + dx);
-      const py = Math.round(y + dy);
-      const v = elevAt(px, py);
-      if (v === null || v <= best) continue;
-      if (chosen.some(([cx, cy]) => Math.hypot(px - cx, py - cy) < 50)) continue;
-      best = v; bx = px; by = py;
-    }
-  }
-  chosen.push([bx, by]);
-  x = bx; y = by;
-  const { lat, lon } = unproject(x, y);
-  const elevationM = Math.round(elevAt(x, y));
-
-  const prof = [];
-  for (let a = 0; a < 360; a++) prof.push(horizonAlong(x, y, lon, a, 400, 2));
-
-  return {
-    ...s,
-    lat: Number(lat.toFixed(3)),
-    lon: Number(lon.toFixed(3)),
-    elevationM,
-    horizonDeg: prof.map((v) => Number(v.toFixed(2))),
-  };
-});
-
-fs.writeFileSync(path.join(OUT, "sites.json"), JSON.stringify({
-  source: "LRO LOLA LDEM_80S_80M (NASA PDS Geosciences Node)",
-  moonRadiusM: R_MOON_M,
-  grid: { size: N, pixM: PIX_M },
-  overview: { size: OV },
-  shadow: { size: G, azimuthBins: AZ },
-  elevation: { size: 1024, pixM: (N * PIX_M) / 1024 },
-  sites: siteProfiles,
-}));
-console.error("wrote sites.json");
-for (const s of siteProfiles) {
-  const mean = s.horizonDeg.reduce((a, b) => a + b, 0) / 360;
-  console.error(`  ${s.name.padEnd(24)} ${s.lat}° ${s.lon}° ${s.elevationM} m  horizon mean ${mean.toFixed(1)}° max ${Math.max(...s.horizonDeg).toFixed(1)}°`);
+// Landing sites are no longer chosen here. web/scripts/select-sites.mjs (npm run sites)
+// evaluates the 130 published sites of Wueller et al. (2026) for NASA's Artemis III
+// regions with the shared horizon code (scripts/lib/horizon.mjs) and fills `sites`.
+// This script only (re)writes the grid metadata and keeps any sites already present.
+{
+  const sitesPath = path.join(OUT, "sites.json");
+  const prev = fs.existsSync(sitesPath) ? JSON.parse(fs.readFileSync(sitesPath, "utf8")) : {};
+  fs.writeFileSync(sitesPath, JSON.stringify({
+    ...prev,
+    source: "LRO LOLA LDEM_80S_80M (NASA PDS Geosciences Node)",
+    moonRadiusM: R_MOON_M,
+    grid: { size: N, pixM: PIX_M },
+    overview: { size: OV },
+    shadow: { size: G, azimuthBins: AZ },
+    elevation: { size: 1024, pixM: (N * PIX_M) / 1024 },
+    sites: prev.sites ?? [],
+  }));
+  console.error("wrote sites.json metadata (run `npm run sites` in web/ to fill sites)");
 }

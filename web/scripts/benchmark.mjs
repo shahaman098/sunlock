@@ -43,7 +43,8 @@ for (const site of meta.sites) {
   const samples = siteSeries(site, skies);
   const stats = statsFor(samples, STEP_MIN);
 
-  // 1. disc-integrated illumination
+  // 1. criterion: disc centre vs any part (the app's rule) vs disc-integrated fraction
+  const centrePct = statsFor(siteSeries({ ...site, horizonDeg: site.horizonDeg.map((h) => h + SUN_R) }, skies), STEP_MIN).illumPct;
   let discSum = 0;
   for (const sky of skies) {
     const r = readSite(site, sky);
@@ -72,9 +73,11 @@ for (const site of meta.sites) {
 
   results.push({
     site: site.name,
-    illumPct: +stats.illumPct.toFixed(2),
+    illumPct: +stats.illumPct.toFixed(2), // any part of the disc (the app's rule)
+    centrePct: +centrePct.toFixed(2),
     discPct: +discPct.toFixed(2),
-    discDeltaPct: +(discPct - stats.illumPct).toFixed(2),
+    discDeltaPct: +(discPct - centrePct).toFixed(2), // disc-integrated vs centre, as reported before
+    criterionSpreadPct: +(stats.illumPct - centrePct).toFixed(2), // any part vs centre
     positionShiftSdPct: +sd.toFixed(2),
     horizon4degPct: +coarsePct.toFixed(2),
     horizonDeltaPct: +(coarsePct - stats.illumPct).toFixed(2),
@@ -87,6 +90,7 @@ const summary = {
   model: { sunAngularRadiusDeg: SUN_R, positionShiftRadiusM: 250, coarseHorizonSamplingDeg: 4 },
   sites: results,
   maxDiscDeltaPct: Math.max(...results.map((r) => Math.abs(r.discDeltaPct))),
+  maxCriterionSpreadPct: Math.max(...results.map((r) => Math.abs(r.criterionSpreadPct))),
   maxPositionShiftSdPct: Math.max(...results.map((r) => Math.abs(r.positionShiftSdPct))),
   maxHorizonDeltaPct: Math.max(...results.map((r) => Math.abs(r.horizonDeltaPct))),
 };

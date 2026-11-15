@@ -18,8 +18,9 @@ const RAW = path.resolve(HERE, "../../data/raw");
 const OUT = path.resolve(HERE, "../public/terrain/benchmark-convergence.json");
 
 const R = 1737400, D = Math.PI / 180, SUN_R = 0.266;
-const meta = JSON.parse(fs.readFileSync(path.resolve(HERE, "../public/terrain/sites.json"), "utf8"));
-const site = meta.sites.find((s) => s.name === "Peak near Shackleton");
+// Pinned to the coordinate the research report uses (not looked up by name, so it stays
+// reproducible when the app's site list changes).
+const site = { name: "Peak near Shackleton (report coordinate)", lat: -89.438, lon: 222.717 };
 const skies = buildSkies(new Date(Date.UTC(2027, 0, 1)), 180, 30);
 
 const N = 7600, PIX = 80, C = (N - 1) / 2;
@@ -50,9 +51,10 @@ function horizon(stepM) {
   const n = Math.floor(64000 / stepM);
   const prof = [];
   for (let az = 0; az < 360; az++) {
-    const ang = (az - site.lon) * D;
+    // geographic azimuth -> image direction: north (az 0) is (sin lon, -cos lon), east is (cos lon, sin lon)
+    const ang = (az + site.lon) * D;
     // negated: raster axes run opposite to the standard stereographic convention
-    const dx = -Math.sin(ang), dy = -Math.cos(ang);
+    const dx = Math.sin(ang), dy = -Math.cos(ang);
     let best = -1e9;
     for (let k = 1; k <= n; k++) {
       const h = bilinear(x0 + dx * k * stepPx, y0 + dy * k * stepPx);
@@ -69,10 +71,10 @@ function horizon(stepM) {
 const rows = [];
 for (const stepM of [80, 40, 20, 10]) {
   const prof = horizon(stepM);
-  const centre = statsFor(siteSeries({ ...site, horizonDeg: prof }, skies), 30).illumPct;
-  // "any part of disc visible" == horizon lowered by the solar angular radius
-  const limbProf = prof.map((h) => h - SUN_R);
-  const limb = statsFor(siteSeries({ ...site, horizonDeg: limbProf }, skies), 30).illumPct;
+  // readSite counts the Sun as up while any part of its disc clears the horizon.
+  // Disc centre == the same test against a horizon raised by the solar radius.
+  const centre = statsFor(siteSeries({ ...site, horizonDeg: prof.map((h) => h + SUN_R) }, skies), 30).illumPct;
+  const limb = statsFor(siteSeries({ ...site, horizonDeg: prof }, skies), 30).illumPct;
   rows.push({
     stepM,
     meanHorizonDeg: +(prof.reduce((p, q) => p + q, 0) / 360).toFixed(2),

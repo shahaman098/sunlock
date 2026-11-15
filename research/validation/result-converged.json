@@ -1,36 +1,36 @@
 {
-  "generated": "2026-11-15T01:08:47.825Z",
+  "generated": "2026-11-15T16:06:29.187Z",
   "convention": "converged",
-  "stepHours": 3,
+  "stepHours": 1,
   "years": 18.6,
   "start": "2010-01-01T00:00:00.000Z",
   "points": {
-    "requested": 500,
-    "used": 500,
-    "paired": 451,
+    "requested": 2000,
+    "used": 2000,
+    "paired": 1782,
     "dropped": 0
   },
   "h1": {
-    "r": 0.9948,
-    "rmsePct": 1.36,
-    "biasPct": -0.15,
-    "rCentre": 0.9929
+    "r": 0.9897,
+    "rmsePct": 1.88,
+    "biasPct": 0.01,
+    "rCentre": 0.9877
   },
   "bands": [
     {
       "band": "0-20%",
-      "n": 185,
-      "bias": -0.1
+      "n": 737,
+      "bias": 0.15
     },
     {
       "band": "20-50%",
-      "n": 265,
-      "bias": -0.19
+      "n": 1042,
+      "bias": -0.08
     },
     {
       "band": "50-80%",
-      "n": 1,
-      "bias": -2.64
+      "n": 3,
+      "bias": -5.01
     },
     {
       "band": "80-101%",
@@ -38,15 +38,29 @@
       "bias": null
     }
   ],
+  "h2": {
+    "n": 2000,
+    "tp": 212,
+    "fp": 6,
+    "fn": 11,
+    "tn": 1771,
+    "iou": 0.926
+  },
+  "h4": {
+    "n": 1471,
+    "r": 0.9894,
+    "rmsePct": 2.98,
+    "biasPct": 0.19
+  },
   "distributions": {
     "ours": [
-      0.015,
-      0.234,
+      0.017,
+      0.237,
       0.434
     ],
     "ref": [
-      0.017,
-      0.236,
+      0.014,
+      0.237,
       0.433
     ]
   }

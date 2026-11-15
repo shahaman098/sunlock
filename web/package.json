@@ -12,17 +12,23 @@
     "bench": "tsc --ignoreConfig src/lib/selene.ts src/lib/analysis.ts --outDir .build --module esnext --target es2022 --moduleResolution bundler --skipLibCheck && sed -i '' 's|from \\\"./selene\\\"|from \\\"./selene.js\\\"|' .build/analysis.js && node scripts/benchmark.mjs",
     "bench:ray": "tsc --ignoreConfig src/lib/selene.ts src/lib/analysis.ts --outDir .build --module esnext --target es2022 --moduleResolution bundler --skipLibCheck && sed -i '' 's|from \\\"./selene\\\"|from \\\"./selene.js\\\"|' .build/analysis.js && node scripts/benchmark-ray.mjs",
     "bench:conv": "tsc --ignoreConfig src/lib/selene.ts src/lib/analysis.ts --outDir .build --module esnext --target es2022 --moduleResolution bundler --skipLibCheck && sed -i '' 's|from \\\"./selene\\\"|from \\\"./selene.js\\\"|' .build/analysis.js && node scripts/benchmark-convergence.mjs",
-    "validate": "tsc --ignoreConfig src/lib/selene.ts --outDir .build --module esnext --target es2022 --moduleResolution bundler --skipLibCheck && node scripts/validate-lola.mjs"
+    "sites": "tsc --ignoreConfig src/lib/selene.ts --outDir .build --module esnext --target es2022 --moduleResolution bundler --skipLibCheck && node scripts/select-sites.mjs",
+    "test": "tsc --ignoreConfig src/lib/selene.ts src/lib/power.ts --outDir .build --module esnext --target es2022 --moduleResolution bundler --skipLibCheck && node --test \"tests/*.test.mjs\"",
+    "exp:20m": "tsc --ignoreConfig src/lib/selene.ts --outDir .build --module esnext --target es2022 --moduleResolution bundler --skipLibCheck && node scripts/experiment-20m.mjs",
+    "validate": "tsc --ignoreConfig src/lib/selene.ts --outDir .build --module esnext --target es2022 --moduleResolution bundler --skipLibCheck && node scripts/validate-lola.mjs",
+    "missions": "node scripts/build-missions.mjs"
   },
   "dependencies": {
     "astronomy-engine": "^2.1.19",
     "react": "^19.3.1",
-    "react-dom": "^19.3.1"
+    "react-dom": "^19.3.1",
+    "three": "0.187.0"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
+    "@types/three": "0.187.0",
     "@vitejs/plugin-react": "^6.1.2",
     "oxlint": "^1.90.0",
     "typescript": "~7.0.2",

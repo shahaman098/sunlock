@@ -138,9 +138,10 @@ function horizonProfile(lat, lon, convention) {
   const nSteps = Math.floor((maxKm * 1000) / stepM);
   const prof = new Float32Array(360);
   for (let az = 0; az < 360; az++) {
-    const ang = (az - lon) * D;
+    // geographic azimuth -> image direction: north (az 0) is (sin lon, -cos lon), east is (cos lon, sin lon)
+    const ang = (az + lon) * D;
     // negated: raster axes run opposite to the standard stereographic convention
-    const dx = -Math.sin(ang), dy = -Math.cos(ang);
+    const dx = Math.sin(ang), dy = -Math.cos(ang);
     let best = -1e9;
     for (let k = 1; k <= nSteps; k++) {
       const h = g(x0 + dx * k * stepPx, y0 + dy * k * stepPx);
@@ -186,7 +187,8 @@ const skies = new Float32Array(nSteps * 6);
 for (let i = 0; i < nSteps; i++) {
   const s = skyAt(new Date(start + i * stepMs));
   skies[i * 6 + 0] = s.sun.x; skies[i * 6 + 1] = s.sun.y; skies[i * 6 + 2] = s.sun.z;
-  skies[i * 6 + 3] = s.earth.x; skies[i * 6 + 4] = s.earth.y; skies[i * 6 + 5] = s.earth.z;
+  // Earth stored as a vector in lunar radii, so each point can take its own parallax
+  skies[i * 6 + 3] = s.earth.x * s.earthDistR; skies[i * 6 + 4] = s.earth.y * s.earthDistR; skies[i * 6 + 5] = s.earth.z * s.earthDistR;
 }
 console.timeEnd("skies");
 
@@ -199,7 +201,7 @@ for (const pt of points) {
   if (!hz) { dropped++; continue; }
   const b = siteBasis(pt.lat, pt.lon);
 
-  let litAny = 0, litCentre = 0;
+  let litAny = 0, litCentre = 0, earthAny = 0;
   for (let i = 0; i < nSteps; i++) {
     const sx = skies[i * 6], sy = skies[i * 6 + 1], sz = skies[i * 6 + 2];
     const sinEl = sx * b.up.x + sy * b.up.y + sz * b.up.z;
@@ -212,12 +214,21 @@ for (const pt of points) {
     const h = horizonAt(hz.prof, az);
     if (el > h) litCentre++;
     if (el + SUN_R > h) litAny++;
+    // H4: any part of Earth's disc above the local horizon
+    // topocentric: seen from the surface point, not the Moon's centre
+    let ex = skies[i * 6 + 3] - b.up.x, ey = skies[i * 6 + 4] - b.up.y, ez = skies[i * 6 + 5] - b.up.z;
+    const en = Math.hypot(ex, ey, ez); ex /= en; ey /= en; ez /= en;
+    const eEl = Math.asin(Math.max(-1, Math.min(1, ex * b.up.x + ey * b.up.y + ez * b.up.z))) / D;
+    let eAz = Math.atan2(ex * b.east.x + ey * b.east.y + ez * b.east.z, ex * b.north.x + ey * b.north.y + ez * b.north.z) / D;
+    if (eAz < 0) eAz += 360;
+    if (eEl + EARTH_R > horizonAt(hz.prof, eAz)) earthAny++;
   }
   rows.push({
     lat: +pt.lat.toFixed(4),
     lon: +pt.lon.toFixed(4),
     oursAny: +(litAny / nSteps).toFixed(5),
     oursCentre: +(litCentre / nSteps).toFixed(5),
+    oursEarth: +(earthAny / nSteps).toFixed(5),
   });
   if (++done % 100 === 0) process.stderr.write(`\r${done}`);
 }
@@ -259,6 +270,36 @@ const bands = [
   };
 });
 
+// ---------- H2: permanent shadow (all points, not just the paired set) ----------
+const lpsr = loadProduct("LPSR_85S_060M_201608"); // DN +20000 = permanent shadow
+let tp = 0, fp = 0, fn = 0, tn = 0, h2n = 0;
+for (const r of rows) {
+  const v = sampleRef(lpsr, r.lat, r.lon);
+  if (v === null) continue;
+  h2n++;
+  const refPsr = v > 0;
+  const ourPsr = r.oursAny === 0; // never touched by any part of the Sun in 18.6 years
+  if (refPsr && ourPsr) tp++; else if (!refPsr && ourPsr) fp++; else if (refPsr && !ourPsr) fn++; else tn++;
+}
+const h2 = { n: h2n, tp, fp, fn, tn, iou: +(tp / Math.max(1, tp + fp + fn)).toFixed(3) };
+
+// ---------- H4: Earth visibility on the same random points ----------
+const avgEarth = loadProduct("AVGVISIB_85S_060M_201608_EARTH");
+const epair = [];
+for (const r of rows) {
+  const ref = sampleRef(avgEarth, r.lat, r.lon);
+  if (ref === null) continue;
+  if (ref <= 0 && r.oursEarth <= 0.001) continue; // both never see Earth; excluded from r, as for H1
+  epair.push({ ours: r.oursEarth, ref });
+}
+const ed = epair.map((p) => p.ours - p.ref);
+const h4 = {
+  n: epair.length,
+  r: +pearson(epair.map((p) => p.ours), epair.map((p) => p.ref)).toFixed(4),
+  rmsePct: +(Math.sqrt(mean(ed.map((d) => d * d))) * 100).toFixed(2),
+  biasPct: +(mean(ed) * 100).toFixed(2),
+};
+
 const pct = (arr, q) => {
   const a = [...arr].sort((x, y) => x - y);
   return a[Math.floor(q * (a.length - 1))];
@@ -278,6 +319,8 @@ const result = {
     rCentre: +pearson(pair.map((p) => p.oursCentre), refs).toFixed(4),
   },
   bands,
+  h2,
+  h4,
   distributions: {
     ours: [0.05, 0.5, 0.95].map((q) => +pct(ours, q).toFixed(3)),
     ref: [0.05, 0.5, 0.95].map((q) => +pct(refs, q).toFixed(3)),

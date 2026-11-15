@@ -11,9 +11,10 @@ const H = 104;
 const W = 360;
 
 /** Scale to the sky that actually exists at this site: the Sun never climbs far. */
-function scaleFor(horizon: number[]) {
+function scaleFor(horizon: number[], highest: number) {
   const maxHorizon = Math.max(...horizon);
-  const max = Math.max(6, Math.ceil(maxHorizon + 1));
+  // near the pole the scale stays low so the hills read; elsewhere the Sun climbs high
+  const max = Math.min(90, Math.max(6, Math.ceil(maxHorizon + 1), Math.ceil(highest + 2)));
   const min = -3;
   return { min, max };
 }
@@ -26,7 +27,8 @@ const xOf = (az: number) => ((az % 360) + 360) % 360;
  * are plotted where they actually are, so occlusion is visible rather than implied.
  */
 export default function SkyView({ horizon, sun, earth, track, sunLit, earthComm }: Props) {
-  const { min: elevMin, max: elevMax } = scaleFor(horizon);
+  const highest = Math.max(sun.elev, earth.elev, ...track.map((p) => p.elev));
+  const { min: elevMin, max: elevMax } = scaleFor(horizon, highest);
   const yOf = (elev: number) => H - ((Math.min(elevMax, Math.max(elevMin, elev)) - elevMin) / (elevMax - elevMin)) * H;
 
   const ground =
@@ -59,7 +61,7 @@ export default function SkyView({ horizon, sun, earth, track, sunLit, earthComm 
   return (
     <div className="skyview">
       <div className="sky-head">
-        <span className="sky-title">Sky above the site</span>
+        <span className="sky-title">Looking around from the site</span>
         <span className="sky-legend">
           <span className="chip chip-sun" /> Sun {sun.elev >= 0 ? "+" : ""}{sun.elev.toFixed(1)}°
           <span className="chip chip-earth" /> Earth {earth.elev >= 0 ? "+" : ""}{earth.elev.toFixed(1)}°
@@ -70,15 +72,15 @@ export default function SkyView({ horizon, sun, earth, track, sunLit, earthComm 
            aria-label="Azimuth-elevation panorama showing the terrain horizon with the Sun and Earth">
         <defs>
           <linearGradient id="skygrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#0b1626" />
-            <stop offset="100%" stopColor="#070d16" />
+            <stop offset="0%" stopColor="#0a1220" />
+            <stop offset="100%" stopColor="#020304" />
           </linearGradient>
         </defs>
 
         <rect x="0" y="0" width={W} height={H} fill="url(#skygrad)" />
 
         {/* elevation guides */}
-        {[0, 1, 2, 3, 4, 6, 8, 10, 12, 15].filter((e) => e <= elevMax).map((e) => (
+        {(elevMax > 20 ? [0, 10, 20, 30, 45, 60, 75, 90] : [0, 1, 2, 3, 4, 6, 8, 10, 12, 15]).filter((e) => e <= elevMax).map((e) => (
           <g key={e}>
             <line x1="0" x2={W} y1={yOf(e)} y2={yOf(e)} className={e === 0 ? "sky-zero" : "sky-guide"} />
             <text x="2" y={yOf(e) - 2} className="sky-tick">{e}°</text>
@@ -114,9 +116,9 @@ export default function SkyView({ horizon, sun, earth, track, sunLit, earthComm 
       </svg>
 
       <div className="sky-foot">
-        {sunLit ? "Sun clears the skyline" : "Sun is behind the skyline"} ·{" "}
-        {earthComm ? "Earth in view" : "Earth below the skyline"}
-        <span className="sky-scale">vertical scale {elevMin}° to +{elevMax}°</span>
+        {sunLit ? "The Sun is up" : "The Sun is below the horizon or behind hills"} ·{" "}
+        {earthComm ? "Earth is in view" : "Earth is hidden"}
+        <span className="sky-scale">{elevMax <= 20 ? "height exaggerated, " : ""}{elevMin}° to +{elevMax}°</span>
       </div>
     </div>
   );
