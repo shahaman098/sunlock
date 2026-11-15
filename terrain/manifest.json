@@ -1,6 +1,6 @@
 {
  "about": "What every shipped SUNLOCK data file was built from. Written by web/scripts/pipeline.mjs (npm run data); NASA inputs are listed with their official URLs in data/sources.json.",
- "commit": "1b61dac",
+ "commit": "dccc05c",
  "uncommittedChanges": true,
  "sources": {
   "ldem_80s_80m": {
@@ -130,6 +130,28 @@
    "outputs": [
     "research/validation/result-wac.json",
     "research/validation/pairs-wac.csv"
+   ]
+  },
+  "validate-wac-movie": {
+   "command": "node scripts/validate-wac-movie.mjs",
+   "ranAt": "2026-11-15T19:23:42.416Z",
+   "seconds": 28,
+   "key": "7ec0b1f62e3ed7ed9f3ee09de7a14dc31cc41b75101551327c01f9e4852d7b4f",
+   "inputs": {
+    "web/scripts/validate-wac-movie.mjs": "012f152fc61b17c469f2f5b5ff2444028a8cae55b43f91e6ce36dd238d893af2",
+    "scripts/lib/horizon.mjs": "827e5f7e859016c1b7b7343d5c85ec98f3f57f55742469cdce0129b2a4c82e43",
+    "web/src/lib/selene.ts": "c68784ca4beda39ed01b83fcdd12954b526ac2abe9a4f12f259029f1eea2700f",
+    "web/src/lib/power.ts": "7c59d9788effa9d92f6bde634f14ad677f87e3f82d5b12b9ca190bfc5cb1a9b5",
+    "data/raw/ldem_80s_80m.img": "e6591eeea35402ca5e124ca00f5bf0774381a2d4fa919144b455d82b8ff65fdc",
+    "research/validation/raw/AVGVISIB_85S_060M_201608.IMG": "82dadf321dee28f1947c1fed81858d4cf50fe8eb2aa405aae114e8ab21c1efe1",
+    "research/validation/raw/AVGVISIB_85S_060M_201608.LBL": "33decce957d5d4d9608557d8d969d1e1b94056a159b2563624ade4b528a0c917",
+    "research/validation/wac-movie-samples.json": "f1b41726108c9121d0c5484c26fe6d71b9a76d0e498c2c19d931d3301005ac65",
+    "research/validation/wac-movie-samples.bin": "838efceb65affb04cf65aa37d07af1efe0fec88ac6e6be1795045aa9da4b2273"
+   },
+   "outputs": [
+    "research/validation/result-wac-movie.json",
+    "web/public/terrain/wac-movie.json",
+    "web/public/terrain/wac-movie.bin"
    ]
   },
   "sites": {
@@ -315,6 +337,21 @@
    "sha256": "7d089645f4aa696929a105f125aebb3ef8efbd7b4b95b30fe560b01e5b9e3d62",
    "bytes": 43897,
    "stage": "validate-nearby"
+  },
+  "research/validation/result-wac-movie.json": {
+   "sha256": "52d6cac32ddb9664cd2ea6694e1cb831a191f181e70698b4e9a74c5591d447bc",
+   "bytes": 5811,
+   "stage": "validate-wac-movie"
+  },
+  "web/public/terrain/wac-movie.json": {
+   "sha256": "ee4167a6662434a120fd648a650b1392710a7fd9d627359d9ac6bd1c5eb6e740",
+   "bytes": 16060,
+   "stage": "validate-wac-movie"
+  },
+  "web/public/terrain/wac-movie.bin": {
+   "sha256": "805789ec038e190256eac1b90d067f6b1869d479b025e6266a35df8d0e8307b4",
+   "bytes": 626661,
+   "stage": "validate-wac-movie"
   }
  }
 }
