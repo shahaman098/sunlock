@@ -25,8 +25,8 @@ Four hypotheses were fixed and committed (`research/PREREGISTRATION.md`, commit 
 | | | RMSE | **1.35 pp** | — | |
 | | | bias | **−0.16 pp** | ≤ 5 pp | ✅ |
 | **H2** | LOLA `LPSR_85S_060M` permanent shadow | IoU | **0.907** | ≥ 0.80 | ✅ |
-| **H3** | LROC `WAC_POLE_ILL_TWI_SOUTH` (image-based) | Pearson r | **0.898** | ≥ 0.85 | ✅ |
-| | | RMSE / bias | 7.02 pp / +4.89 pp | — | |
+| **H3** | LROC `WAC_POLE_ILL_TWI_SOUTH` (image-based) | Pearson r | **0.980** | ≥ 0.85 | ✅ |
+| | | RMSE / bias | 3.09 pp / +1.59 pp | — | |
 | **H4** | LOLA Earth-visibility map | Pearson r | **0.9893** | ≥ 0.90 | ✅ |
 | | | RMSE / bias | 3.01 pp / −0.08 pp | — | |
 
@@ -34,9 +34,8 @@ Sample: fixed seed, 85–90°S (88–90°S for H3), 500 points, 3-hourly over 18
 (pre-registered fallback). H2 confusion matrix: TP 49, FP 0, FN 5, TN 446.
 
 H3 is the strongest external test: the LROC map is derived from **3,807 photographs** taken
-over one lunar year, so it checks our predicted shadows against *observed* shadows. The
-+4.9 pp bias is consistent with the product's conservative illumination threshold, which
-undercounts dimly lit pixels.
+over one lunar year, so it checks our predicted shadows against *observed* shadows (296
+points inside its 88–90°S coverage, 1-hourly integration over the observation window).
 
 ### What this validation caught
 

@@ -67,7 +67,7 @@ points falling outside valid data are dropped and counted.
 | H1 | LOLA average solar visibility (18.6 yr) | Pearson r | **0.995** | ≥ 0.90 |
 | | | RMSE / bias | 1.35 pp / −0.16 pp | bias ≤ 5 pp |
 | H2 | LOLA permanent shadow | IoU | **0.907** | ≥ 0.80 |
-| H3 | **LROC WAC image-based** illumination | Pearson r | **0.898** | ≥ 0.85 |
+| H3 | **LROC WAC image-based** illumination | Pearson r | **0.980** | ≥ 0.85 |
 | H4 | LOLA Earth visibility | Pearson r | **0.989** | ≥ 0.90 |
 
 H3 is the independent-modality test: the LROC map comes from 3,807 photographs, not altimetry.
