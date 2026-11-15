@@ -6,6 +6,8 @@ import Porkchop from "./components/Porkchop";
 // three.js is only downloaded when someone opens the 3D view
 const Terrain3D = lazy(() => import("./components/Terrain3D"));
 const Globe3D = lazy(() => import("./components/Globe3D"));
+import Explore from "./components/Explore";
+import type { GlobeApi } from "./components/Globe3D";
 import { classify, loadFinder, type Finder, type FinderLimits } from "./lib/finder";
 import { buildShadowField, loadTerrain, computeShadow, customHorizon, unprojectFromUnit, type ElevationGrid, type ShadowField, type TerrainMeta } from "./lib/terrain";
 import { buildSkies, commWindows, raisedTerrain, siteSeries, statsFor, upcomingWindows } from "./lib/analysis";
@@ -90,12 +92,14 @@ function readHash() {
       panels: (["tracking", "vertical", "horizontal"] as const).find((m) => m === p.get("panels")),
       array: num("array", 0.5, 50),
       battery: num("battery", 1, 200),
+      // a link without a view is one made in the console (before the 3D way in existed); a bare address opens in 3D
+      view: p.get("view") === "3d" ? ("explore" as const) : p.get("view") === "console" || [...p.keys()].length ? ("console" as const) : ("explore" as const),
     };
   } catch {
     return {};
   }
 }
-const INITIAL = readHash();
+const INITIAL: Partial<ReturnType<typeof readHash>> = readHash();
 
 type NearbySpot = { km: number; dir: string; lat: number; lon: number; elevationM: number; horizonDeg: number[] };
 
@@ -237,6 +241,16 @@ export default function App() {
   /** choosing a site any other way clears the "same spot as" note */
   const setSelectedId = (id: string) => { setSameSpotNote(null); setSelectedIdRaw(id); };
   const [stageView, setStageView] = useState<"map" | "finder" | "3d" | "globe">("map");
+  /** "explore" = the full-screen 3D Moon; "console" = the detailed mission console. Same state behind both. */
+  const [mode, setMode] = useState<"explore" | "console">(INITIAL.view ?? "explore");
+  const [exScene, setExScene] = useState<"moon" | "surface">("moon");
+  const globeApi = useRef<GlobeApi | null>(null);
+  const [vw, setVw] = useState(() => window.innerWidth);
+  useEffect(() => {
+    const on = () => setVw(window.innerWidth);
+    window.addEventListener("resize", on);
+    return () => window.removeEventListener("resize", on);
+  }, []);
   const [finderData, setFinderData] = useState<Finder | null>(null);
   const [finderErr, setFinderErr] = useState<string | null>(null);
   const [limits, setLimits] = useState<FinderLimits>({ sunPct: 50, earthPct: 50, slopeDeg: 8, shadowKm: 5 });
@@ -549,6 +563,7 @@ export default function App() {
       if (h.site) setSelectedId(h.site);
       else if (h.lat !== undefined && h.lon !== undefined) checkCoordsRef.current(h.lat, h.lon, "typed");
       if (h.landMs !== undefined) setCurrentMs(h.landMs);
+      if (h.view) setMode(h.view);
       if (h.days !== undefined) setMissionDays(h.days);
       setPanelHeight(h.height ?? 0);
       if (h.panels) setArrayMode(h.panels);
@@ -571,8 +586,8 @@ export default function App() {
     if (!selected) return "";
     const iso = new Date(currentMs).toISOString().slice(0, 16) + "Z";
     const where = selected.id === "custom" ? `${selected.nearOf ? `near=${selected.nearOf}&` : ""}lat=${selected.lat}&lon=${selected.lon}` : `site=${selected.id}`;
-    return `${where}&land=${iso}&days=${missionDays}&load=${lander.loadW}&array=${lander.arrayM2}&battery=${lander.batteryWh / 1000}${lander.heaterW ? `&heater=${lander.heaterW}` : ""}${arrayMode !== "tracking" ? `&panels=${arrayMode}` : ""}${panelHeight ? `&height=${panelHeight}` : ""}${maxOutageH !== null ? `&outage=${maxOutageH}` : ""}${reservePct ? `&reserve=${reservePct}` : ""}`;
-  }, [selected, currentMs, missionDays, lander, panelHeight, arrayMode, maxOutageH, reservePct]);
+    return `${where}&land=${iso}&days=${missionDays}&load=${lander.loadW}&array=${lander.arrayM2}&battery=${lander.batteryWh / 1000}${lander.heaterW ? `&heater=${lander.heaterW}` : ""}${arrayMode !== "tracking" ? `&panels=${arrayMode}` : ""}${panelHeight ? `&height=${panelHeight}` : ""}${maxOutageH !== null ? `&outage=${maxOutageH}` : ""}${reservePct ? `&reserve=${reservePct}` : ""}${mode === "explore" ? "&view=3d" : ""}`;
+  }, [selected, currentMs, missionDays, lander, panelHeight, arrayMode, maxOutageH, reservePct, mode]);
   // Keep the URL hash in sync so any view can be shared as a link.
   useEffect(() => {
     shareHashRef.current = shareHash;
@@ -770,8 +785,98 @@ export default function App() {
 
   const verdictClass = !selLander || !missionFits ? "verdict-hero" : selLander.survives ? "verdict-hero is-ok" : "verdict-hero is-bad";
 
+  const globeScene = (immersive: boolean) => (
+    <Suspense fallback={<div className="t3d-msg">Loading the 3D Moon…</div>}>
+      <Globe3D
+        sites={globeSites}
+        selectedId={selected?.id ?? null}
+        sky={currentSky}
+        dateLabel={fmtDate(currentMs)}
+        hillshade={hillshade}
+        field={field}
+        shadow={shadow}
+        onSelect={(id) => setSelectedId(id)}
+        immersive={immersive}
+        insetRight={immersive && vw >= 900 ? 336 - 240 : 0 /* right card less the left list: centred between them */}
+        insetBottom={immersive ? 124 - 56 : 0}
+        apiRef={immersive ? globeApi : undefined}
+      />
+    </Suspense>
+  );
+  const surfaceBlocked = !selected ? "Pick a site first"
+    : selected.lat > -80 ? `The surface view covers 80–90°S, where we carry NASA's LOLA terrain; ${selected.name} is outside it`
+    : !elevation || !reading ? "Loading terrain…" : null;
+  const surfaceScene = selected && reading && elevation && !surfaceBlocked ? (
+    <Suspense fallback={<div className="t3d-msg">Loading the 3D view…</div>}>
+      <Terrain3D elevation={elevation} lat={selected.lat} lon={selected.lon} name={selected.name}
+        sunAz={reading.sunAz} sunElev={reading.sunElev} earthAz={reading.earthAz} earthElev={reading.earthElev} lit={reading.lit} />
+    </Suspense>
+  ) : null;
+  const exVerdict: { state: "ok" | "bad" | "none"; title: string; detail: string } =
+    !selLander ? { state: "none", title: "…", detail: "" }
+    : !missionFits ? { state: "none", title: "Stay is too long for this date", detail: `We model one calendar year at a time. Land before ${fmtDay(START_MS + (DAYS - missionDays) * 86400000)}, or pick ${year + 1} in the mission console.` }
+    : selLander.survives ? { state: "ok", title: "SURVIVES", detail: selLander.minSocPct >= 99.5 ? "The battery stays full the whole time." : `The battery never drops below ${selLander.minSocPct.toFixed(0)}% of its usable charge.` }
+    : selLander.failure === "earth" ? { state: "bad", title: "NO EARTH CONTACT", detail: `Earth stays below the skyline for more than ${maxOutageH} hours from ${fmtDate(selLander.earthFailAt! - (maxOutageH ?? 0) * 3600000)}.` }
+    : { state: "bad", title: reservePct ? "RESERVE BREACHED" : "BATTERY DIES", detail: reservePct ? `The battery falls to your ${reservePct}% reserve on ${fmtDate(selLander.lostAt!)}.` : `It runs out of power in the dark on ${fmtDate(selLander.lostAt!)}.` };
+  const openConsole = () => { setMode("console"); window.scrollTo(0, 0); };
+
   return (
-    <div className="console">
+    <div className={mode === "explore" ? "console is-explore" : "console"}>
+      {mode === "explore" && (
+        <Explore
+          scene={exScene === "surface" && surfaceScene ? surfaceScene : globeScene(true)}
+          sceneMode={exScene === "surface" && surfaceScene ? "surface" : "moon"}
+          onSceneMode={setExScene}
+          surfaceBlocked={surfaceBlocked}
+          site={selected ? {
+            name: selected.name,
+            kind: selected.id === "custom" ? "Your chosen spot" : selected.mission ? selected.group ?? "Mission" : selected.current === false ? "Older NASA site" : "NASA Artemis III site",
+            coords: `${Math.abs(selected.lat).toFixed(2)}°${selected.lat < 0 ? "S" : "N"} ${selected.lon.toFixed(1)}°E`,
+            blurb: selected.blurb,
+          } : null}
+          verdict={exVerdict}
+          now={reading ? {
+            lit: reading.lit, comm: reading.comm,
+            sunNote: sunFlipMs !== null ? `${reading.lit ? "sets" : "rises"} in ${fmtIn(sunFlipMs)}` : `no change before the end of ${year}`,
+            earthNote: earthFlipMs !== null ? `${reading.comm ? "sets" : "rises"} in ${fmtIn(earthFlipMs)}` : `no change before the end of ${year}`,
+          } : null}
+          yearStats={selStats ? { year, sunPct: selStats.illumPct, earthPct: selStats.commPct, darkDays: selStats.longestDarkH / 24 } : null}
+          landerLine={`Land ${fmtDay(currentMs)} · ${missionDays} days · ${lander.loadW} W, ${lander.arrayM2} m², ${lander.batteryWh / 1000} kWh`}
+          windows={windows.slice(0, 2).map((w) => ({ start: w.start, label: `${fmtDay(w.start)} ${new Date(w.start).toISOString().slice(11, 16)}`, meta: `battery ≥ ${w.minSocPct.toFixed(0)}%` }))}
+          sites={rankedCurrent.map((s) => {
+            const run = landerBySite.get(s.id);
+            return { id: s.id, name: s.name, lit: series.get(s.id)?.[landIdx]?.lit ?? false, survives: run && missionFits ? run.survives : null };
+          })}
+          selectedId={selected?.id ?? ""}
+          onSelect={(id) => { setSelectedId(id); setExScene("moon"); }}
+          landLabel={fmtDay(currentMs)}
+          currentMs={currentMs}
+          dateText={new Date(currentMs).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" })}
+          timeText={new Date(currentMs).toISOString().slice(11, 16)}
+          months={win.months}
+          samples={yearSeries}
+          playing={playing}
+          speedH={speedH}
+          onPlay={() => setPlaying((v) => !v)}
+          onSpeed={setSpeedH}
+          onStep={stepBy}
+          onTime={setCurrentMs}
+          onCamera={(to) => {
+            const g = globeApi.current;
+            if (!g) return;
+            if (to === "pole") g.go(-90, 0, 1.75);
+            else if (to === "earth") g.go(currentSky.subEarth.lat, currentSky.subEarth.lon, 4.3, true);
+            else if (to === "terminator") g.go(0, currentSky.subSun.lon + 80, 4.3, true);
+            else if (selected) g.go(selected.lat, selected.lon, 1.35);
+          }}
+          onConsole={openConsole}
+          onMethod={() => setMethodOpen(true)}
+          onTour={() => { openConsole(); setTourStep(0); }}
+          onCopy={copyLink}
+          copied={copied}
+        />
+      )}
+      {mode === "console" && <>
       {/* ================= TOP BAR: identity + live telemetry ================= */}
       <header className="cx-top">
         <div className="cx-brand">
@@ -834,6 +939,10 @@ export default function App() {
           </button>
           <button className="cx-btn" onClick={() => setMethodOpen(true)}>How it works</button>
           <button className="cx-btn" onClick={() => setTourStep(0)}>Take the tour</button>
+          <button className="cx-btn ex-primary" onClick={() => { setPlaying(false); setMode("explore"); }} title="The whole Moon in 3D, full screen">
+            <svg viewBox="0 0 12 12" aria-hidden><circle cx="6" cy="6" r="4.5" fill="none" stroke="currentColor" strokeWidth="1.3" /><path d="M6 1.5a7 7 0 0 0 0 9" fill="none" stroke="currentColor" strokeWidth="1.3" /></svg>
+            3D Moon
+          </button>
         </div>
       </header>
 
@@ -1589,6 +1698,7 @@ export default function App() {
         <span className="foot-keys"><kbd>Space</kbd> play <kbd>←</kbd> <kbd>→</kbd> step 6 hours</span>
         <span className="foot-note">A planning aid built for the NASA Space Apps Challenge. Not an official NASA product.</span>
       </footer>
+      </>}
 
       {/* ================= METHOD DRAWER ================= */}
       {methodOpen && (
@@ -1683,6 +1793,9 @@ export default function App() {
               LOLA team's illumination maps, LROC WAC) by one command, <code>npm run data</code>; the SHA-256 of each NASA input
               and each output is in <a href={`${import.meta.env.BASE_URL}terrain/manifest.json`} target="_blank" rel="noreferrer">manifest.json</a>,
               and <code>node scripts/fetch-data.mjs</code> downloads the inputs from NASA's archives and checks them.
+              The surface picture on the 3D Moon is NASA's LROC colour mosaic from the{" "}
+              <a href="https://svs.gsfc.nasa.gov/4720" target="_blank" rel="noreferrer">CGI Moon Kit</a> (NASA Scientific
+              Visualization Studio); it is for display only, and no result is computed from it.
             </p>
             <p>
               Ephemeris: Sun and Earth vectors from <b>Astronomy Engine</b> (VSOP87/ELP-based), rotated into
@@ -1750,7 +1863,7 @@ export default function App() {
         </div>
       )}
 
-      {tourStep !== null && (
+      {tourStep !== null && mode === "console" && (
         <Tour
           step={tourStep}
           onStep={(n) => {

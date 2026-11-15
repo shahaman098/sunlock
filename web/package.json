@@ -21,6 +21,8 @@
     "validate:nearby": "tsc --ignoreConfig src/lib/selene.ts src/lib/power.ts src/lib/analysis.ts src/lib/terrain.ts --outDir .build --module esnext --target es2022 --moduleResolution bundler --skipLibCheck --types vite/client && sed -i '' -E 's|from \"\\./([a-z]+)\"|from \"./\\1.js\"|' .build/analysis.js .build/terrain.js && node scripts/validate-nearby.mjs",
     "nearby": "tsc --ignoreConfig src/lib/selene.ts src/lib/terrain.ts --outDir .build --module esnext --target es2022 --moduleResolution bundler --skipLibCheck --types vite/client && sed -i '' -E 's|from \"\\./([a-z]+)\"|from \"./\\1.js\"|' .build/terrain.js && node scripts/build-nearby.mjs",
     "validate:wac": "tsc --ignoreConfig src/lib/selene.ts --outDir .build --module esnext --target es2022 --moduleResolution bundler --skipLibCheck && node scripts/validate-wac.mjs",
+    "fetch:wac-movie": "node scripts/fetch-wac-movie.mjs",
+    "validate:wac-movie": "tsc --ignoreConfig src/lib/selene.ts src/lib/power.ts --outDir .build --module esnext --target es2022 --moduleResolution bundler --skipLibCheck --types vite/client && node scripts/validate-wac-movie.mjs",
     "data": "node scripts/pipeline.mjs",
     "data:check": "node scripts/pipeline.mjs --check"
   },

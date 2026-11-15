@@ -39,7 +39,13 @@ async function list() {
   let token = null;
   for (let page = 0; page < 40; page++) {
     const u = `${HOST}/?list-type=2&max-keys=1000&prefix=${PREFIX}WAC_MOVIE_S${MONTH}${token ? `&continuation-token=${encodeURIComponent(token)}` : ""}`;
-    const xml = await (await fetch(u)).text();
+    let xml = null;
+    for (let attempt = 1; xml === null; attempt++) {
+      const r = await fetch(u);
+      if (r.ok) xml = await r.text();
+      else if (attempt >= 8) throw new Error(`listing the frames: HTTP ${r.status}`);
+      else await new Promise((res) => setTimeout(res, attempt * 20000));
+    }
     for (const m of xml.matchAll(/<Key>[^<]*\/(WAC_MOVIE_S\d{8}T\d{4})\.IMG<\/Key>/g)) names.add(m[1]);
     token = xml.match(/<NextContinuationToken>([^<]+)/)?.[1] ?? null;
     if (!token) break;
@@ -47,7 +53,22 @@ async function list() {
   return [...names].sort();
 }
 
+// Each sampled frame is cached (data/raw is not committed), so an interrupted run resumes.
+const CACHE = path.join(ROOT, "data/raw/wac-movie-cache");
+fs.mkdirSync(CACHE, { recursive: true });
+
 async function sample(name) {
+  const cached = path.join(CACHE, `${name}.json`);
+  if (fs.existsSync(cached)) {
+    const c = JSON.parse(fs.readFileSync(cached, "utf8"));
+    if (c.out.length === points.length) return { name, start: c.start, stop: c.stop, out: Float32Array.from(c.out, (v) => v ?? NaN) };
+  }
+  const r = await fetchSample(name);
+  fs.writeFileSync(cached, JSON.stringify({ start: r.start, stop: r.stop, out: Array.from(r.out, (v) => (Number.isNaN(v) ? null : v)) }));
+  return r;
+}
+
+async function fetchSample(name) {
   const url = `${HOST}/${PREFIX}${name}.IMG`;
   const from = HEADER + ROW0 * N * 4, to = HEADER + ROW1 * N * 4 - 1;
   for (let attempt = 1; ; attempt++) {
@@ -68,16 +89,18 @@ async function sample(name) {
       });
       return { name, start, stop, out };
     } catch (e) {
-      if (attempt >= 4) throw new Error(`${name}: ${e.message}`);
+      if (attempt >= 8) throw new Error(`${name}: ${e.message}`);
+      await new Promise((r) => setTimeout(r, attempt * 20000)); // the archive rate-limits (HTTP 429): back off
     }
   }
 }
 
 const names = await list();
+if (!names.length) throw new Error(`no frames listed for ${MONTH}; nothing written`);
 console.log(`${names.length} frames in ${MONTH}, ${points.length} grid points`);
 const results = new Array(names.length);
 let next = 0, done = 0;
-await Promise.all(Array.from({ length: 6 }, async () => {
+await Promise.all(Array.from({ length: 3 }, async () => {
   while (next < names.length) {
     const i = next++;
     results[i] = await sample(names[i]);

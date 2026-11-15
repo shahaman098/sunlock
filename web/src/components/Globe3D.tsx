@@ -16,7 +16,16 @@ type Props = {
   field: ShadowField | null;
   shadow: ShadowView | null;
   onSelect: (id: string) => void;
+  /** full-screen use: no buttons or captions of its own (the host draws them), names on every site */
+  immersive?: boolean;
+  /** pixels on the right covered by the host's panels; the Moon is centred in what is left */
+  insetRight?: number;
+  /** likewise for the bottom (less whatever covers the top) */
+  insetBottom?: number;
+  /** lets the host fly the camera */
+  apiRef?: { current: GlobeApi | null };
 };
+export type GlobeApi = { go: (lat: number, lon: number, dist: number, northUp?: boolean) => void };
 
 /** Lunar body-fixed (x toward the mean Earth, z north) -> three.js (y up). A proper rotation. */
 const toThree = (v: Vec) => new THREE.Vector3(v.x, v.z, -v.y);
@@ -40,7 +49,7 @@ function glow(inner: string, outer: string) {
   return t;
 }
 
-function label(text: string, color = "#e8e8e8") {
+function label(text: string, color = "#e8e8e8", size = 0.021) {
   const c = document.createElement("canvas");
   const g0 = c.getContext("2d")!;
   g0.font = "600 34px Inter, Helvetica, Arial, sans-serif";
@@ -54,7 +63,8 @@ function label(text: string, color = "#e8e8e8") {
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthTest: false, transparent: true, sizeAttenuation: false }));
-  s.scale.set((0.021 * w) / 56, 0.021, 1);
+  s.scale.set((size * w) / 56, size, 1);
+  s.userData.base = [(size * w) / 56, size]; // at a 700 px tall view; rescaled each frame so text keeps its pixel size
   s.center.set(0.5, -0.6); // sits just above its anchor
   s.renderOrder = 10;
   return s;
@@ -66,13 +76,17 @@ function label(text: string, color = "#e8e8e8") {
  * direction (drawn close and enlarged). The surface is NASA's LROC colour mosaic; south of
  * 80 deg S it is overlaid with the LOLA relief the rest of the app is computed from.
  */
-export default function Globe3D({ sites, selectedId, sky, dateLabel, hillshade, field, shadow, onSelect }: Props) {
+export default function Globe3D({ sites, selectedId, sky, dateLabel, hillshade, field, shadow, onSelect, immersive = false, insetRight = 0, insetBottom = 0, apiRef }: Props) {
+  const insetRef = useRef(insetRight);
+  insetRef.current = insetRight;
+  const insetYRef = useRef(0);
+  insetYRef.current = insetBottom;
   const wrapRef = useRef<HTMLDivElement>(null);
   const three = useRef<{
     renderer: THREE.WebGLRenderer; scene: THREE.Scene; camera: THREE.PerspectiveCamera; controls: TrackballControls;
     sun: THREE.DirectionalLight; sunSprite: THREE.Sprite; sunLabel: THREE.Sprite; sunLine: THREE.Line;
     earth: THREE.Mesh; earthLabel: THREE.Sprite; earthLine: THREE.Line;
-    markers: THREE.Group; capTex: THREE.CanvasTexture; flyTo: (dir: THREE.Vector3, dist: number, northUp?: boolean) => void;
+    markers: THREE.Group; capTex: THREE.CanvasTexture; flyTo: (dir: THREE.Vector3, dist: number, northUp?: boolean) => void; fit: () => void;
   } | null>(null);
   const [failed, setFailed] = useState(false);
   const [hover, setHover] = useState<{ x: number; y: number; text: string } | null>(null);
@@ -98,7 +112,7 @@ export default function Globe3D({ sites, selectedId, sky, dateLabel, hillshade, 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x000000);
     const camera = new THREE.PerspectiveCamera(38, 1, 0.01, 400);
-    camera.position.copy(onSphere(-62, 25, 3.4));
+    camera.position.copy(onSphere(-62, 25, immersive ? 7.5 : 3.4)); // full-screen: arrive from far out
     camera.up.copy(onSphere(0, 0));
 
     const controls = new TrackballControls(camera, renderer.domElement);
@@ -227,14 +241,18 @@ export default function Globe3D({ sites, selectedId, sky, dateLabel, hillshade, 
     renderer.domElement.addEventListener("pointerup", onUp);
     renderer.domElement.addEventListener("pointermove", onMove);
 
-    const ro = new ResizeObserver(() => {
+    const fit = () => {
       const w = wrap.clientWidth, h = wrap.clientHeight;
       if (!w || !h) return;
       renderer.setSize(w, h);
       camera.aspect = w / h;
+      // keep the Moon in the middle of the part of the view the host's panels leave free
+      const inset = Math.min(insetRef.current, w * 0.5);
+      if (inset > 0 || insetYRef.current) camera.setViewOffset(w, h, inset / 2, insetYRef.current / 2, w, h); else camera.clearViewOffset();
       camera.updateProjectionMatrix();
       controls.handleResize();
-    });
+    };
+    const ro = new ResizeObserver(fit);
     ro.observe(wrap);
 
     let raf = 0;
@@ -252,12 +270,21 @@ export default function Globe3D({ sites, selectedId, sky, dateLabel, hillshade, 
       } else controls.update();
       // markers keep a readable size as the camera closes in
       const s = THREE.MathUtils.clamp((camera.position.length() - 1) * 0.55, 0.05, 1.2);
-      markers.children.forEach((m) => m.scale.setScalar(s * (m.userData.selected ? 1.5 : 1)));
+      const dist = camera.position.length(), view = camera.position.clone().normalize();
+      const textK = 700 / Math.max(1, renderer.domElement.clientHeight);
+      for (const l of [sunLabel, earthLabel]) { const b = l.userData.base as number[]; l.scale.set(b[0] * textK, b[1] * textK, 1); }
+      markers.children.forEach((m) => {
+        m.scale.setScalar(s * (m.userData.selected ? 1.5 : 1));
+        // a name shows only on the side facing the camera; the pole's cluster only once close enough to tell apart
+        const lab = m.userData.label as THREE.Sprite | undefined;
+        if (lab) { const b = lab.userData.base as number[]; lab.scale.set((b[0] * textK) / m.scale.x, (b[1] * textK) / m.scale.x, 1); }
+        if (lab) lab.visible = m.position.dot(view) > 0.15 && (m.userData.selected || (m.userData.polar ? dist < 1.5 : dist > 1.9));
+      });
       renderer.render(scene, camera);
     };
     tick();
 
-    three.current = { renderer, scene, camera, controls, sun, sunSprite, sunLabel, sunLine, earth, earthLabel, earthLine, markers, capTex, flyTo };
+    three.current = { renderer, scene, camera, controls, sun, sunSprite, sunLabel, sunLine, earth, earthLabel, earthLine, markers, capTex, flyTo, fit };
     return () => {
       cancelAnimationFrame(raf);
       ro.disconnect();
@@ -275,7 +302,15 @@ export default function Globe3D({ sites, selectedId, sky, dateLabel, hillshade, 
       renderer.domElement.remove();
       three.current = null;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => { three.current?.fit(); }, [insetRight, insetBottom]);
+  useEffect(() => {
+    if (!apiRef) return;
+    apiRef.current = { go: (lat, lon, dist, northUp) => three.current?.flyTo(onSphere(lat, lon), dist, northUp) };
+    return () => { apiRef.current = null; };
+  }, [apiRef]);
 
   // ---- Sun and Earth for this moment
   useEffect(() => {
@@ -327,7 +362,7 @@ export default function Globe3D({ sites, selectedId, sky, dateLabel, hillshade, 
       const sel = s.id === selectedId;
       const g = new THREE.Group();
       g.position.copy(onSphere(s.lat, s.lon, 1.004));
-      g.userData = { id: s.id, selected: sel };
+      g.userData = { id: s.id, selected: sel, polar: s.lat < -80 };
       const r = s.kind === "mission" ? 0.011 : 0.015;
       const dot = new THREE.Mesh(new THREE.SphereGeometry(r, 16, 8), new THREE.MeshBasicMaterial({ color: s.lit ? LIT : DARK }));
       g.add(dot);
@@ -336,7 +371,12 @@ export default function Globe3D({ sites, selectedId, sky, dateLabel, hillshade, 
         ring.lookAt(g.position.clone().multiplyScalar(2)); // flat on the surface
         ring.renderOrder = 9;
         g.add(ring);
-        g.add(label(s.name, "#ffffff"));
+      }
+      if (sel || immersive) {
+        const lab = sel ? label(s.name, "#ffffff") : label(s.name, "#c9c9cc", 0.0165);
+        if (sel) lab.center.set(0.5, -1.5); // clear of the ring
+        g.userData.label = lab;
+        g.add(lab);
       }
       t.markers.add(g);
     }
@@ -348,7 +388,7 @@ export default function Globe3D({ sites, selectedId, sky, dateLabel, hillshade, 
   useEffect(() => {
     const t = three.current;
     if (!t || !sel) return;
-    t.flyTo(onSphere(sel.lat, sel.lon), Math.min(t.camera.position.length(), 2.5));
+    t.flyTo(onSphere(sel.lat, sel.lon), Math.min(t.camera.position.length(), immersive ? 4.3 : 2.5));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId, sel?.lat, sel?.lon]);
 
@@ -358,30 +398,32 @@ export default function Globe3D({ sites, selectedId, sky, dateLabel, hillshade, 
   const fmt = (p: { lat: number; lon: number }) => `${Math.abs(p.lat).toFixed(1)}°${p.lat < 0 ? "S" : "N"} ${(((p.lon % 360) + 360) % 360).toFixed(0)}°E`;
   const go = (lat: number, lon: number, dist: number, northUp = false) => three.current?.flyTo(onSphere(lat, lon), dist, northUp);
   return (
-    <div className="t3d globe">
+    <div className={immersive ? "t3d globe globe-full" : "t3d globe"}>
       <div className="globe-view">
         <div className="t3d-canvas" ref={wrapRef} role="img"
              aria-label={`3D view of the Moon on ${dateLabel}, lit by the Sun from its true direction, with ${sites.length} landing sites marked`} />
         {hover && <div className="globe-tip" style={{ left: hover.x + 12, top: hover.y + 12 }}>{hover.text}</div>}
-        <div className="globe-hud">
-          <span className="globe-k">The Moon · {dateLabel}</span>
-          <span>Sun overhead at <b>{fmt(sky.subSun)}</b></span>
-          <span>Earth overhead at <b>{fmt(sky.subEarth)}</b></span>
-        </div>
+        {!immersive && (
+          <div className="globe-hud">
+            <span className="globe-k">The Moon · {dateLabel}</span>
+            <span>Sun overhead at <b>{fmt(sky.subSun)}</b></span>
+            <span>Earth overhead at <b>{fmt(sky.subEarth)}</b></span>
+          </div>
+        )}
       </div>
-      <div className="t3d-bar globe-bar">
+      {!immersive && <div className="t3d-bar globe-bar">
         <div className="segmented" role="group" aria-label="Fly the camera to">
           <button className="seg" onClick={() => go(-90, 0, 1.75)}>South pole</button>
           <button className="seg" onClick={() => go(sky.subEarth.lat, sky.subEarth.lon, 3.4, true)}>From Earth</button>
           <button className="seg" onClick={() => go(0, sky.subSun.lon + 80, 3.4, true)}>Day–night line</button>
           {sel && <button className="seg" onClick={() => go(sel.lat, sel.lon, 1.35)}>{sel.name.length > 22 ? "Selected site" : sel.name}</button>}
         </div>
-      </div>
-      <p className="t3d-note">
+      </div>}
+      {!immersive && <p className="t3d-note">
         Drag to turn the Moon, scroll or pinch to zoom, click a site to fly to it. Yellow sites are in sunlight right now, blue ones in shadow.
         Sunlight and Earth come from their true directions; Earth and the Sun are drawn far closer and larger than they are.
         Surface: NASA LROC colour mosaic (CGI Moon Kit); south of 80°S, LOLA relief with the terrain shadows computed for this moment.
-      </p>
+      </p>}
     </div>
   );
 }

@@ -162,6 +162,18 @@
       ]
     },
     {
+      "id": "lroc_color_2k",
+      "path": "data/raw/lroc_color_poles_2k.tif",
+      "url": "https://svs.gsfc.nasa.gov/vis/a000000/a004700/a004720/lroc_color_poles_2k.tif",
+      "bytes": 3339438,
+      "sha256": "13b797422e8c4b8607ff2b2623ac3a046a6da0132d567c2d272d92fad7052c4a",
+      "product": "NASA SVS CGI Moon Kit (svs.gsfc.nasa.gov/4720), LROC WAC colour mosaic, 2048 x 1024; converted to web/public/moon.jpg as the surface picture of the 3D Moon view (display only, no result is computed from it)",
+      "usedBy": [
+        "globe"
+      ],
+      "optional": true
+    },
+    {
       "id": "wueller2026_sites",
       "path": "research/data/wueller2026-landing-sites.csv",
       "url": "https://doi.org/10.5281/zenodo.17084058",

@@ -126,7 +126,9 @@ function agreement(thresh, off) {
     if (o && m) tp++; else if (!o && !m) tn++; else if (!o && m) fp++; else fn++;
   }
   const n = tp + tn + fp + fn;
-  return { n, agreePct: +((100 * (tp + tn)) / n).toFixed(2), bothBright: tp, bothDark: tn, weBrightPhotoDark: fp, weDarkPhotoBright: fn };
+  // most samples are dark, so plain agreement flatters any model: also give what "always dark"
+  // would score and the overlap of the bright class alone
+  return { n, agreePct: +((100 * (tp + tn)) / n).toFixed(2), alwaysDarkWouldAgreePct: +((100 * (tn + fp)) / n).toFixed(2), brightOverlapIoU: +(tp / (tp + fp + fn)).toFixed(3), bothBright: tp, bothDark: tn, weBrightPhotoDark: fp, weDarkPhotoBright: fn };
 }
 const byClearance = [[-90, -2], [-2, -1], [-1, -0.5], [-0.5, -0.266], [-0.266, 0], [0, 0.266], [0.266, 0.5], [0.5, 1], [1, 2], [2, 90]].map(([lo, hi]) => {
   let n = 0, b = 0;
