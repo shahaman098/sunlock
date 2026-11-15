@@ -1041,6 +1041,7 @@
 .fp-spot:hover { border-color: var(--ok); background: rgba(71, 218, 132, 0.16); }
 .ms-cell { font-family: var(--mono); font-size: var(--fs-label); color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 @media (max-width: 1180px) { .fp-sliders { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 480px) { .fp-sliders { grid-template-columns: minmax(0, 1fr); } }
 .fp-note { margin-top: 6px; }
 
 /* ------------------------------------------------------------ sizing options, stress test, requirement */

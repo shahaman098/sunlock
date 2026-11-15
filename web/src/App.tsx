@@ -1061,7 +1061,11 @@ export default function App() {
                 <div className="fp-top">
                   <span className="fp-top-k">Best passing spots, 8 km apart · click to check</span>
                   {finderResult.top.map((t, i) => (
-                    <button key={i} className="fp-spot" onClick={() => checkCoords(t.lat, t.lon, "typed")}
+                    <button key={i} className="fp-spot" onClick={() => {
+                      // on stacked (phone/tablet) layouts the result is below the map: take the user to it
+                      if (checkCoords(t.lat, t.lon, "typed") && window.matchMedia("(max-width: 820px)").matches)
+                        window.setTimeout(() => document.querySelector(".cx-right")?.scrollIntoView({ block: "start" }), 300);
+                    }}
                             title={`This 60 m spot: sunlight ${t.sunPct}%, Earth in view ${t.earthPct}%, slope ${t.slopeDeg.toFixed(1)}°, permanent shadow (possible ice) ${t.shadowKm !== null ? `${t.shadowKm.toFixed(1)} km` : "over 12.7 km"} away`}>
                       <b>{Math.abs(t.lat).toFixed(2)}°S {t.lon.toFixed(1)}°E</b> <span>☀ {t.sunPct}% · ⊕ {t.earthPct}%</span>
                     </button>
