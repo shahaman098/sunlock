@@ -186,5 +186,5 @@ const result = {
 };
 fs.writeFileSync(path.join(ROOT, "research/validation/result-wac.json"), JSON.stringify(result, null, 2) + "\n");
 fs.writeFileSync(path.join(ROOT, "research/validation/pairs-wac.csv"), "lat,lon,wac,ours_converged,ours_shipped\n" + rows.map((r) => `${r.lat},${r.lon},${r.ref},${r.converged},${r.shipped}`).join("\n") + "\n");
-const { bandsConverged, ...summary } = result;
+const { bandsConverged: _bands, ...summary } = result;
 console.log(JSON.stringify(summary, null, 1));

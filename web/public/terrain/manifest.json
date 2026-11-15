@@ -1,6 +1,6 @@
 {
  "about": "What every shipped SUNLOCK data file was built from. Written by web/scripts/pipeline.mjs (npm run data); NASA inputs are listed with their official URLs in data/sources.json.",
- "commit": "3ebc810",
+ "commit": "1b61dac",
  "uncommittedChanges": true,
  "sources": {
   "ldem_80s_80m": {
@@ -92,8 +92,8 @@
   },
   "validate-lola": {
    "command": "node scripts/validate-lola.mjs --points 2000 --step 1 --convention converged",
-   "ranAt": "2026-11-15T18:36:40.429Z",
-   "seconds": 42,
+   "ranAt": "2026-11-15T18:42:43.825Z",
+   "seconds": 40,
    "key": "80dd90e9582cc0a875435d9d4042b299e3987959b1723d570477a4743533755d",
    "inputs": {
     "web/scripts/validate-lola.mjs": "7085a9a30d618116ba13e07fd64528034f632bc9f1796cee3ba99bf22d8fc3f0",
@@ -114,11 +114,11 @@
   },
   "validate-wac": {
    "command": "node scripts/validate-wac.mjs",
-   "ranAt": "2026-11-15T18:36:47.993Z",
-   "seconds": 8,
-   "key": "044ec773e952fa77a977df942a5a8f910cb46d3febc5c6ec2351afffdc76f12e",
+   "ranAt": "2026-11-15T18:43:29.218Z",
+   "seconds": 7,
+   "key": "8896c03ae651cee949de8e4a82e345c2530049dc0dbca5ddd77e0641af781fd0",
    "inputs": {
-    "web/scripts/validate-wac.mjs": "02b4313a099dcd90dd945397abe0d1ffbf8c3d53e7470c401f3330d9f8aae2a3",
+    "web/scripts/validate-wac.mjs": "ac1422e9cf71c94ccfa940c4b98bd6a59cc472221f1fc89120f6cd7fc1aac637",
     "scripts/lib/horizon.mjs": "827e5f7e859016c1b7b7343d5c85ec98f3f57f55742469cdce0129b2a4c82e43",
     "web/src/lib/selene.ts": "c68784ca4beda39ed01b83fcdd12954b526ac2abe9a4f12f259029f1eea2700f",
     "data/raw/ldem_80s_80m.img": "e6591eeea35402ca5e124ca00f5bf0774381a2d4fa919144b455d82b8ff65fdc",
@@ -134,9 +134,9 @@
   },
   "sites": {
    "command": "node scripts/select-sites.mjs",
-   "ranAt": "2026-11-15T18:36:55.553Z",
-   "seconds": 8,
-   "key": "11730b0b9a6ea5c4a415b477d5c61f20ae183453aca1e7de5b354cb8089f6120",
+   "ranAt": "2026-11-15T18:42:50.834Z",
+   "seconds": 7,
+   "key": "a1ede8560174a664547a7293150ec34c2940e6adb118314b2f73e5a491093954",
    "inputs": {
     "web/scripts/select-sites.mjs": "492c988be8fb6652b7c9b2f3d1bc2e6044488bcf90b33b7132e8a6890d465dd0",
     "scripts/lib/horizon.mjs": "827e5f7e859016c1b7b7343d5c85ec98f3f57f55742469cdce0129b2a4c82e43",
@@ -149,7 +149,7 @@
     "research/validation/raw/LPSR_85S_060M_201608.IMG": "f8203cab342c817fc7851431e264def3cc64a3b8c30f032d61e0a44f1e4ef761",
     "research/validation/raw/LPSR_85S_060M_201608.LBL": "42ae7cb0ae64ff8df7a17106228921bd07eb9afba8fb833c4a8cfd2f53487c0f",
     "research/data/wueller2026-landing-sites.csv": "545b948cef999a503a362932a620eda2a319cc92defaa79ea21890fab9de89b9",
-    "research/validation/result-converged.json": "5f8034c532b66e04c45947f31b103b363d91cbb9faf35aef14eed54d4142df8c",
+    "research/validation/result-converged.json": "66842edc4e3e2412e2f68809f4eaeb373c1243747e7ab1dc705c5ffcc0682607",
     "research/validation/result-wac.json": "970c23ec1a1fc0265492a69d0875e5c9ea9de7a3af214cde257a1d6bac2d3ae7"
    },
    "outputs": [
@@ -287,8 +287,8 @@
    "stage": "sites"
   },
   "web/public/terrain/validation.json": {
-   "sha256": "71b26d2f6bd165fb45492d4ae74dac388ef2592aa51dc71619d001e803421684",
-   "bytes": 1228,
+   "sha256": "6f498d160843961f9b181707af77dfc3afef68361d10d555a163806399b636ad",
+   "bytes": 1231,
    "stage": "sites"
   },
   "web/public/terrain/nearby.json": {

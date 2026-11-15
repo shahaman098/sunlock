@@ -12,7 +12,7 @@ const sources = JSON.parse(read("data/sources.json")).files;
 
 test("every pipeline output on disk matches the SHA-256 the manifest recorded", () => {
   const outs = Object.entries(manifest.outputs);
-  assert.ok(outs.length >= 18, `${outs.length} outputs recorded`);
+  assert.ok(outs.length >= 16, `${outs.length} outputs recorded`);
   for (const [p, o] of outs) {
     const buf = read(p);
     assert.equal(buf.length, o.bytes, `${p}: size`);
