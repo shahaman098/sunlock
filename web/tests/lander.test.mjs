@@ -166,3 +166,42 @@ test("robust options: each single change passes every stress case when applied",
   assert.equal(allPass({ ...small, batteryWh: o.batteryWh - 100 }, 0), false);
   if (o.landIdx !== null) assert.ok(allPass(small, o.landIdx));
 });
+
+test("earliest landing: every half hour is checked, so a single viable start is found", async () => {
+  const { earliestSurvivable } = await import("../.build/power.js");
+  // dark everywhere except a lit block; a 2-day mission survives only if it starts within it
+  // at starts 100-101 (one dark half hour at most), which a 6-hour scan (0, 12, 24, ...) skips
+  const s = series(48 * 20, (i) => (i >= 101 && i < 101 + 96 ? { lit: true, sunElev: 1, sunFrac: 1 } : { lit: false, sunElev: -1, sunFrac: 0 }));
+  const steps = 96, tiny = { ...spec, batteryWh: 125 }; // 100 Wh usable: 1 hour of darkness
+  const i = earliestSurvivable(s, 0, s.length - steps, steps, STEP_MIN, "tracking", tiny);
+  assert.equal(i, 100);
+  for (let j = 0; j < s.length - steps; j += 12) assert.equal(simulateMission(s, j, steps, STEP_MIN, "tracking", tiny, {}, false).survives, false);
+});
+
+test("stress cases past the data are unknown, never a pass", async () => {
+  const { allCasesPass } = await import("../.build/power.js");
+  const s = series(48 * 12, () => ({ lit: true, sunElev: 1, sunFrac: 1, comm: true }));
+  const steps = 48 * 10; // 3-day late landing would need 13 days of data
+  const cases = stressTest(s, 0, steps, STEP_MIN, "tracking", spec);
+  const late = cases.find((c) => c.id === "slip3d");
+  assert.equal(late.result, null);
+  assert.ok(cases.filter((c) => c.result).every((c) => c.result.survives));
+  assert.equal(allCasesPass(cases), false);
+  assert.equal(allCasesPass(stressTest(series(48 * 14, () => ({ lit: true, sunElev: 1, sunFrac: 1, comm: true })), 0, steps, STEP_MIN, "tracking", spec)), true);
+});
+
+test("CSV states the real failure reason and the requirements", async () => {
+  const { missionCsv } = await import("../.build/export.js");
+  const s = series(48 * 3, () => ({ lit: true, sunElev: 1, sunFrac: 1, comm: false, earthElev: -1 }));
+  const req = { maxEarthOutageH: 12, reservePct: 20 };
+  const r = simulateMission(s, 0, s.length, STEP_MIN, "tracking", spec, req);
+  assert.equal(r.failure, "earth");
+  const site = { id: "x", name: "Test", lat: -89, lon: 0, elevationM: 0, blurb: "", horizonDeg: [] };
+  const csv = missionCsv({ site, samples: s, startIdx: 0, steps: s.length, soc: r.soc, mode: "tracking", spec, heightM: 0, result: r, req, stress: stressTest(s, 0, s.length, STEP_MIN, "tracking", spec, req) });
+  assert.match(csv, /# result,fails: Earth hidden longer than 12 h/);
+  assert.doesNotMatch(csv, /battery dies/);
+  assert.match(csv, /reserve to keep 20%/);
+  assert.match(csv, /longest time without Earth in view 12 h/);
+  assert.match(csv, /battery charge at landing 100%/);
+  assert.match(csv, /# stress cases,0 of 7 pass \(3 unknown\)/);
+});

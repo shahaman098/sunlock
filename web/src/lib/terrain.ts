@@ -212,9 +212,10 @@ export function offsetPoint(lat: number, lon: number, azDeg: number, distM: numb
 }
 
 /**
- * Skyline at a point near a named site: the site's detailed (80 m) skyline plus the change our
- * coarse (~600 m) grid sees between the site and the point. At the site itself this returns the
- * site's own skyline exactly, so a nearby position is never judged on a different terrain model.
+ * REJECTED shortcut, kept only so scripts/validate-nearby.mjs can document why: a named site's
+ * 80 m skyline plus the change our ~600 m grid sees. Against NASA's 18.6-year sunlight at 96
+ * nearby points it scored r = 0.17 (full 80 m skylines: r = 0.96), so the app ships full
+ * skylines for nearby positions instead (web/scripts/build-nearby.mjs).
  */
 export function nearbyHorizon(grid: ElevationGrid, site: Pick<Site, "lat" | "lon" | "horizonDeg" | "elevationM">, lat: number, lon: number) {
   const here = customHorizon(grid, site.lat, site.lon);

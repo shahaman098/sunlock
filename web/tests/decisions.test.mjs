@@ -5,12 +5,9 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import { buildSkies, siteSeries, raisedTerrain } from "../.build/analysis.js";
 import { stressTest, robustOptions } from "../.build/power.js";
-import { offsetPoint, nearbyHorizon, customHorizon } from "../.build/terrain.js";
 
 const read = (p) => fs.readFileSync(new URL(`../public/terrain/${p}`, import.meta.url));
 const meta = JSON.parse(read("sites.json"));
-const buf = read("elevgrid.bin");
-const grid = { size: meta.elevation.size, pixM: meta.elevation.pixM, data: new Int16Array(buf.buffer, buf.byteOffset, buf.length / 2) };
 
 const STEP_MIN = 30, START = Date.UTC(2027, 0, 1), YEAR_N = 365 * 48 + 1, DROP = 6.8;
 const skies = buildSkies(new Date(START), 365 + 31, STEP_MIN);
@@ -34,23 +31,6 @@ test("terrain case is calibrated on each site: sunlight falls by 6.8 points and 
   }
 });
 
-test("nearby skyline: identical to the site at zero distance; offsets land at the stated distance", () => {
-  const z = nearbyHorizon(grid, dgr2, dgr2.lat, dgr2.lon);
-  assert.deepEqual(z.horizon, dgr2.horizonDeg);
-  assert.equal(z.elevationM, dgr2.elevationM);
-  const D = Math.PI / 180, R = 1737400;
-  for (const az of [0, 90, 225]) {
-    const p = offsetPoint(dgr2.lat, dgr2.lon, az, 1000);
-    const c = Math.sin(dgr2.lat * D) * Math.sin(p.lat * D) + Math.cos(dgr2.lat * D) * Math.cos(p.lat * D) * Math.cos((dgr2.lon - p.lon) * D);
-    assert.ok(Math.abs(Math.acos(Math.min(1, c)) * R - 1000) < 0.5);
-  }
-  // the adjustment is exactly the coarse-grid change between the two points
-  const p = offsetPoint(dgr2.lat, dgr2.lon, 90, 2000);
-  const h = nearbyHorizon(grid, dgr2, p.lat, p.lon);
-  const a = customHorizon(grid, dgr2.lat, dgr2.lon), b = customHorizon(grid, p.lat, p.lon);
-  for (const i of [0, 90, 180, 270]) assert.ok(Math.abs(h.horizon[i] - dgr2.horizonDeg[i] - (b.horizon[i] - a.horizon[i])) < 1e-9);
-});
-
 test("de Gerlache Rim 2, 15 Feb 2027: marginal plan, and every offered fix passes all 8 cases", () => {
   const ser = siteSeries(dgr2, skies);
   const cases = stressTest(ser, land, steps, STEP_MIN, "tracking", spec, {}, terrainFor(dgr2));
@@ -70,18 +50,40 @@ test("de Gerlache Rim 2, 15 Feb 2027: marginal plan, and every offered fix passe
   for (const s of offered) assert.ok(allPass(siteSeries(s, skies), s), s.name);
 });
 
-test("nearby positions around a narrow sunlit crest lose sunlight, so none rescues this plan", () => {
-  // de Gerlache Rim 2 sits on a local high: 1-2 km away the ground is 50-600 m lower
-  const ser0 = siteSeries(dgr2, skies);
-  let passing = 0, lower = 0;
-  for (const km of [1, 2]) for (let az = 0; az < 360; az += 45) {
-    const p = offsetPoint(dgr2.lat, dgr2.lon, az, km * 1000);
-    const h = nearbyHorizon(grid, dgr2, p.lat, p.lon);
-    const s = { ...dgr2, ...p, horizonDeg: h.horizon, elevationM: h.elevationM };
-    const ser = siteSeries(s, skies);
-    if (litPct(ser) < litPct(ser0)) lower++;
-    if (allPass(ser, s)) passing++;
+const nearby = JSON.parse(read("nearby.json")).sites;
+
+test("nearby positions: 16 per current site, at the stated distance, with their own 80 m skylines", () => {
+  const D = Math.PI / 180, R = 1737400;
+  for (const s of current) {
+    assert.equal(nearby[s.id].length, 16, s.id);
+    for (const n of nearby[s.id]) {
+      const c = Math.sin(s.lat * D) * Math.sin(n.lat * D) + Math.cos(s.lat * D) * Math.cos(n.lat * D) * Math.cos((s.lon - n.lon) * D);
+      assert.ok(Math.abs(Math.acos(Math.min(1, c)) * R - n.km * 1000) < 1, `${s.id} ${n.km} km ${n.dir}`);
+      assert.equal(n.horizonDeg.length, 360);
+    }
   }
-  assert.equal(passing, 0);
-  assert.ok(lower >= 14, `${lower} of 16 positions are darker`);
+});
+
+test("nearby positions: darker over the year, yet a few pass this window; each is judged on its own skyline", () => {
+  // de Gerlache Rim 2 sits on a local high, so all 16 positions 1-2 km away see less Sun over the
+  // year; a few still happen to be lit through this particular 14-day window
+  const ser0 = siteSeries(dgr2, skies);
+  const passing = [];
+  for (const n of nearby[dgr2.id]) {
+    const s = { ...dgr2, lat: n.lat, lon: n.lon, horizonDeg: n.horizonDeg, elevationM: n.elevationM };
+    const ser = siteSeries(s, skies);
+    assert.ok(litPct(ser) < litPct(ser0), `${n.km} km ${n.dir} should be darker over the year`);
+    if (allPass(ser, s)) passing.push(`${n.km} km ${n.dir}`);
+  }
+  assert.deepEqual(passing, ["1 km north-east", "2 km north", "2 km north-east"]);
+});
+
+test("independent evidence: nearby skylines agree with NASA's 18.6-year sunlight; the rejected shortcut did not", () => {
+  const v = JSON.parse(fs.readFileSync(new URL("../../research/validation/nearby.json", import.meta.url)));
+  const full = v.sunlight18y.B_vs_NASA, adjusted = v.sunlight18y.A_vs_NASA;
+  assert.ok(v.sunlight18y.nNasa >= 90);
+  assert.ok(full.r >= 0.9 && Math.abs(full.biasPp) <= 2 && full.rmsePp <= 6.8, JSON.stringify(full));
+  assert.ok(adjusted.r < 0.5, "the adjusted shortcut is documented as failing");
+  // the terrain case (-6.8 points) covers our error at >= 90% of published sites
+  assert.ok(v.terrainCase.n === 105 && v.terrainCase.oursHigherByMoreThanCasePct <= 10);
 });

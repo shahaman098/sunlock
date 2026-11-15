@@ -7,9 +7,9 @@
  *
  * Output (web/public/terrain/finder.bin): N x N cells (~600 m) over the square that holds the
  * 85 deg S circle, in the same polar-stereographic axes as the app's map. Each cell keeps
- * three candidate 60 m spots (sunniest overall, sunniest with slope <= 8 deg, sunniest with
- * slope <= 4 deg); every value of a candidate belongs to that one spot, and the spot's own
- * pixel is stored so the app opens exactly the place whose numbers it shows. See the cell
+ * every 60 m spot not beaten on all four values by another spot in the cell, so no spot that
+ * meets the user's limits is lost; every value of a spot belongs to that one spot, and the
+ * spot's own pixel is stored so the app opens exactly the place whose numbers it shows. See the cell
  * loop below for the byte layout; finder.json carries the layout and projection.
  *
  * Run: npm run finder
@@ -71,16 +71,18 @@ for (let y = 0; y < NP; y++) edt1d((x) => f[y * NP + x], (x, val) => { f[y * NP 
 console.timeEnd("distance to permanent shadow");
 const psrKmAt = (k) => (Math.sqrt(f[k]) * PIX) / 1000;
 
-// ---- cells. Each keeps three candidate 60 m spots: the sunniest overall, the sunniest
-// with slope <= 8 deg and the sunniest with slope <= 4 deg (so a flatter spot that passes
-// stricter limits is not thrown away). Bytes per candidate:
+// ---- cells. Each keeps EVERY 60 m spot that no other spot in the cell beats on all four
+// values at once (its Pareto set: more Sun, more Earth, less slope, nearer permanent shadow,
+// compared after the same rounding the file stores). Any limit the finder applies is a
+// threshold on those four values, so if any spot in the cell passes, a kept spot passes, and
+// the best passing spot (Sun, then Earth, then flatness) is always kept. Bytes per spot:
 //   sun %, Earth %, slope x4, km to permanent shadow x20 (255 = farther than 12.7 km), dx, dy
-// where dx, dy locate the spot's 60 m pixel inside the cell (255 = no such spot).
+// where dx, dy locate the spot's 60 m pixel inside the cell. The file starts with a Uint32
+// index of N*N+1 spot offsets (cell c's spots are index[c] .. index[c+1]-1).
 const HALF_M = OFF * PIX;
 const CELL_M = (2 * HALF_M) / OUT_N;
-const K = 3, B = 6, SLOPE_CAPS = [Infinity, 8, 4];
-const out = new Uint8Array(OUT_N * OUT_N * K * B).fill(255);
-console.log(`cell ${CELL_M.toFixed(1)} m, ${K} candidates per cell`);
+const B = 6;
+console.log(`cell ${CELL_M.toFixed(1)} m, every non-dominated spot per cell`);
 console.time("cells");
 const slopeCache = new Float32Array(NP * NP).fill(NaN);
 const slopeOfPixel = (a, b) => {
@@ -92,12 +94,16 @@ const slopeOfPixel = (a, b) => {
   }
   return slopeCache[k];
 };
+const index = new Uint32Array(OUT_N * OUT_N + 1);
+const chunks = [];
+let total = 0, maxFront = 0, cellsWithData = 0, checks = 0;
 for (let j = 0; j < OUT_N; j++) {
   for (let i = 0; i < OUT_N; i++) {
+    index[j * OUT_N + i] = total;
     const x0 = -HALF_M + i * CELL_M, y0 = -HALF_M + j * CELL_M;
     const a0 = Math.floor(OFF + x0 / PIX), a1 = Math.floor(OFF + (x0 + CELL_M) / PIX);
     const b0 = Math.floor(OFF + y0 / PIX), b1 = Math.floor(OFF + (y0 + CELL_M) / PIX);
-    const best = SLOPE_CAPS.map(() => ({ s: -1, a: 0, b: 0 }));
+    const spots = [];
     for (let b = b0; b < b1; b++) {
       if (b < 0 || b >= NP) continue;
       for (let a = a0; a < a1; a++) {
@@ -107,29 +113,59 @@ for (let j = 0; j < OUT_N; j++) {
         if (sv < 0 || sv > 1.0001) continue;
         const sl = slopeOfPixel(a, b);
         if (sl < 0) continue;
-        for (let c = 0; c < K; c++) if (sl <= SLOPE_CAPS[c] && sv > best[c].s) best[c] = { s: sv, a, b };
+        const km = psrKmAt(k);
+        spots.push([
+          Math.round(100 * sv),
+          Math.round(100 * (earth.data[k] * earth.scale + earth.offsetV)),
+          Math.min(254, Math.round(sl * 4)),
+          km <= 12.7 ? Math.round(km * 20) : 255,
+          a - a0, b - b0,
+        ]);
       }
     }
-    for (let c = 0; c < K; c++) {
-      if (best[c].s < 0) continue;
-      const { a, b } = best[c], k = b * NP + a;
-      const o = ((j * OUT_N + i) * K + c) * B;
-      out[o] = Math.round(100 * best[c].s);
-      out[o + 1] = Math.round(100 * (earth.data[k] * earth.scale + earth.offsetV));
-      out[o + 2] = Math.min(254, Math.round(slopeOfPixel(a, b) * 4));
-      const km = psrKmAt(k);
-      out[o + 3] = km <= 12.7 ? Math.round(km * 20) : 255;
-      out[o + 4] = a - a0;
-      out[o + 5] = b - b0;
+    // best first (Sun, Earth, flatness, nearer shadow), then keep what nothing kept dominates
+    spots.sort((p, q) => q[0] - p[0] || q[1] - p[1] || p[2] - q[2] || p[3] - q[3]);
+    // Dominance is judged on the steps the finder's sliders move in (Sun and Earth 5%, slope
+    // 1 deg, shadow 0.5 km), since a limit can only fall on those steps: q beats p when it
+    // passes every limit p passes AND ranks at least as high, so both "does any spot pass"
+    // and "which spot is best" come out the same as checking every pixel.
+    const cls = (p) => [Math.floor(p[0] / 5), Math.floor(p[1] / 5), Math.ceil(p[2] / 4), p[3] === 255 ? 99 : Math.ceil(p[3] / 10)];
+    const rank = (p) => p[0] * 65536 + p[1] * 256 + (255 - p[2]);
+    const front = [];
+    for (const p of spots) {
+      const cp = cls(p), rp = rank(p);
+      if (front.some((q) => q.c[0] >= cp[0] && q.c[1] >= cp[1] && q.c[2] <= cp[2] && q.c[3] <= cp[3] && q.r >= rp)) continue;
+      front.push({ p, c: cp, r: rp });
     }
+    // self-check on a sample of cells: brute force over every pixel for random slider limits
+    if ((j * OUT_N + i) % 97 === 0 && spots.length) {
+      for (let t = 0; t < 40; t++) {
+        const L = [5 * Math.floor(Math.random() * 20), 5 * Math.floor(Math.random() * 20), 1 + Math.floor(Math.random() * 20), Math.random() < 0.3 ? null : 0.5 * (1 + Math.floor(Math.random() * 25))];
+        const ok = (p) => p[0] >= L[0] && p[1] >= L[1] && p[2] / 4 <= L[2] && (L[3] === null || (p[3] !== 255 && p[3] / 20 <= L[3]));
+        const all = spots.filter(ok), kept = front.map((q) => q.p).filter(ok);
+        if ((all.length > 0) !== (kept.length > 0)) throw new Error(`finder check: cell ${i},${j} limits ${L}`);
+        if (all.length && rank(all[0]) !== Math.max(...kept.map(rank))) throw new Error(`finder rank check: cell ${i},${j}`);
+        checks++;
+      }
+    }
+    if (front.length) cellsWithData++;
+    maxFront = Math.max(maxFront, front.length);
+    for (const q of front) chunks.push(q.p);
+    total += front.length;
   }
 }
+index[OUT_N * OUT_N] = total;
 console.timeEnd("cells");
+console.log(`self-check: ${checks} random limit sets on sampled cells, every pixel vs kept spots: identical`);
+console.log(`${total} spots kept in ${cellsWithData} cells (mean ${(total / cellsWithData).toFixed(1)}, max ${maxFront})`);
+const out = new Uint8Array(index.byteLength + total * B);
+out.set(new Uint8Array(index.buffer), 0);
+chunks.forEach((p, n) => out.set(p, index.byteLength + n * B));
 
 const file = path.join(ROOT, "web/public/terrain/finder.bin");
 fs.writeFileSync(file, out);
 const meta = {
-  n: OUT_N, k: K, bytesPerCandidate: B, slopeCaps: [null, 8, 4], cellM: +CELL_M.toFixed(4), halfM: HALF_M, pixM: PIX, off: OFF,
+  n: OUT_N, layout: "pareto-v1", spots: total, bytesPerCandidate: B, cellM: +CELL_M.toFixed(4), halfM: HALF_M, pixM: PIX, off: OFF,
   candidate: ["sunPct", "earthPct", "slopeDegX4", "psrKmX20", "dxPixel", "dyPixel"],
   sources: ["AVGVISIB_85S_060M_201608", "AVGVISIB_85S_060M_201608_EARTH", "LPSR_85S_060M_201608", "LDEM_80S_80M"],
   generated: new Date().toISOString(),

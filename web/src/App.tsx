@@ -6,9 +6,10 @@ import Porkchop from "./components/Porkchop";
 // three.js is only downloaded when someone opens the 3D view
 const Terrain3D = lazy(() => import("./components/Terrain3D"));
 import { classify, loadFinder, type Finder, type FinderLimits } from "./lib/finder";
-import { buildShadowField, loadTerrain, computeShadow, customHorizon, nearbyHorizon, offsetPoint, unprojectFromUnit, type ElevationGrid, type ShadowField, type TerrainMeta } from "./lib/terrain";
+import { buildShadowField, loadTerrain, computeShadow, customHorizon, unprojectFromUnit, type ElevationGrid, type ShadowField, type TerrainMeta } from "./lib/terrain";
 import { buildSkies, commWindows, raisedTerrain, siteSeries, statsFor, upcomingWindows } from "./lib/analysis";
 import { skyAt, readSite, siteBasis, lookAngles, type Site } from "./lib/selene";
+import { missionCsv } from "./lib/export";
 import { arrayPowerPerM2, batteryWh, energyWh, fmtEnergy, fmtPower, simulateMission, porkchopRow, sizeToSurvive, stressTest, limitingCase, robustOptions, allCasesPass, earliestSurvivable, type ArrayMode, type LanderSpec, type MissionResult, type MissionRequirements, type StressCase, type TerrainCase } from "./lib/power";
 
 const STEP_MIN = 30;
@@ -95,7 +96,17 @@ function readHash() {
 }
 const INITIAL = readHash();
 
-const NEAR_DIRS = ["north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west"];
+type NearbySpot = { km: number; dir: string; lat: number; lon: number; elevationM: number; horizonDeg: number[] };
+
+/** A nearby position as a site of its own, judged on its own precomputed 80 m skyline. */
+function nearbySite(parent: Site, n: NearbySpot): Site {
+  return {
+    id: "custom",
+    name: `${n.km} km ${n.dir} of ${parent.name}`,
+    lat: n.lat, lon: n.lon, elevationM: n.elevationM, terrain: true, nearOf: parent.id, horizonDeg: n.horizonDeg,
+    blurb: `${n.km} km ${n.dir} of ${parent.name}, with its own skyline from the same 80 m LOLA terrain and method as the named sites (ground level). It is not a NASA candidate site: slope and hazards here are not checked.`,
+  };
+}
 
 /** Great-circle distance on the Moon, metres. */
 function dist(lat1: number, lon1: number, lat2: number, lon2: number) {
@@ -216,6 +227,8 @@ export default function App() {
     frame: { maxSunLonDeg: number; maxSunLatDeg: number };
   } | null>(null);
   const [elevation, setElevation] = useState<ElevationGrid | null>(null);
+  /** full 80 m skylines at 1 and 2 km from each current site (web/scripts/build-nearby.mjs) */
+  const [nearbyData, setNearbyData] = useState<Record<string, NearbySpot[]> | null>(null);
   const [customSite, setCustomSite] = useState<Site | null>(null);
   const [missionSites, setMissionSites] = useState<Site[]>([]);
   const [compareIds, setCompareIds] = useState<string[]>([]);
@@ -226,7 +239,7 @@ export default function App() {
   const [finderData, setFinderData] = useState<Finder | null>(null);
   const [finderErr, setFinderErr] = useState<string | null>(null);
   const [limits, setLimits] = useState<FinderLimits>({ sunPct: 50, earthPct: 50, slopeDeg: 8, shadowKm: 5 });
-  // the finder grid (3 MB) is only downloaded the first time someone opens it
+  // the finder grid (6 MB) is only downloaded the first time someone opens it
   useEffect(() => {
     if (stageView !== "finder" || finderData) return;
     let alive = true;
@@ -252,6 +265,11 @@ export default function App() {
           .catch((e) => alive && setError(`Terrain heights for clicked points did not load: ${String(e)}`));
       })
       .catch((e) => setError(String(e)));
+
+    fetch(`${import.meta.env.BASE_URL}terrain/nearby.json`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((v) => { if (alive && v?.sites) setNearbyData(v.sites); })
+      .catch(() => {});
 
     fetch(`${import.meta.env.BASE_URL}terrain/verification.json`)
       .then((r) => (r.ok ? r.json() : null))
@@ -386,21 +404,13 @@ export default function App() {
   const [hashPointDone, setHashPointDone] = useState(false);
   useEffect(() => {
     if (hashPointDone || INITIAL.lat === undefined || INITIAL.lon === undefined) return;
-    // a shared nearby position is rebuilt the same way it was offered (parent skyline + grid change)
+    // a shared nearby position opens with the same precomputed 80 m skyline it was offered with
     if (INITIAL.near) {
-      if (!elevation || !officialSites.length) return;
+      if (!nearbyData || !officialSites.length) return;
       const parent = officialSites.find((s) => s.id === INITIAL.near);
-      const h = parent ? nearbyHorizon(elevation, parent, INITIAL.lat, INITIAL.lon) : null;
-      if (parent && h) {
-        const km = Math.round(dist(parent.lat, parent.lon, INITIAL.lat, INITIAL.lon) / 100) / 10;
-        const D = Math.PI / 180, f1 = parent.lat * D, f2 = INITIAL.lat * D, dl = (INITIAL.lon - parent.lon) * D;
-        const brg = Math.atan2(Math.sin(dl) * Math.cos(f2), Math.cos(f1) * Math.sin(f2) - Math.sin(f1) * Math.cos(f2) * Math.cos(dl)) / D;
-        const dir = NEAR_DIRS[Math.round((((brg % 360) + 360) % 360) / 45) % 8];
-        setCustomSite({
-          id: "custom", name: `${km} km ${dir} of ${parent.name}`, lat: INITIAL.lat, lon: INITIAL.lon, elevationM: h.elevationM,
-          terrain: true, nearOf: parent.id, horizonDeg: h.horizon,
-          blurb: `Preliminary: ${km} km ${dir} of ${parent.name}. Its skyline is ${parent.name}'s detailed 80 m skyline adjusted by the change our ~600 m terrain grid sees over that distance. Slope and hazards at this spot are not checked.`,
-        });
+      const spot = nearbyData[INITIAL.near]?.find((n) => dist(n.lat, n.lon, INITIAL.lat!, INITIAL.lon!) < 1);
+      if (parent && spot) {
+        setCustomSite(nearbySite(parent, spot));
         setSelectedId("custom");
         setHashPointDone(true);
         return;
@@ -408,7 +418,7 @@ export default function App() {
     }
     if (checkCoords(INITIAL.lat, INITIAL.lon, "typed")) setHashPointDone(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [elevation, hashPointDone, officialSites]);
+  }, [elevation, hashPointDone, officialSites, nearbyData]);
 
   const currentSky = useMemo(() => skyAt(new Date(currentMs)), [currentMs]);
   const shadow = useMemo(() => (field ? computeShadow(field, currentSky) : null), [field, currentSky]);
@@ -626,34 +636,17 @@ export default function App() {
   );
 
   /**
-   * Nearby alternative positions: 1 and 2 km from a named site in 8 directions. Each skyline is
-   * the site's detailed one plus the change our ~600 m grid sees, so at zero distance it is the
-   * site itself. Closer than 1 km is below what that grid resolves, so it is not offered.
+   * Nearby alternative positions: 1 and 2 km from a current NASA site in 8 directions, each with
+   * its own full 80 m skyline computed exactly like the named sites' (ground level).
    */
   const nearbyCandidates = useMemo(() => {
-    if (!selected || selected.id === "custom" || selected.terrain === false || selected.lat > -80 || !elevation) return [];
-    const out: { site: Site; km: number; samples: ReturnType<typeof siteSeries> }[] = [];
-    for (const km of [1, 2]) {
-      NEAR_DIRS.forEach((dir, k) => {
-        const p = offsetPoint(selected.lat, selected.lon, k * 45, km * 1000);
-        const h = nearbyHorizon(elevation, selected, p.lat, p.lon);
-        if (!h) return;
-        const site: Site = {
-          id: "custom",
-          name: `${km} km ${dir} of ${selected.name}`,
-          lat: Number(p.lat.toFixed(5)),
-          lon: Number(p.lon.toFixed(5)),
-          elevationM: h.elevationM,
-          terrain: true,
-          nearOf: selected.id,
-          blurb: `Preliminary: ${km} km ${dir} of ${selected.name}. Its skyline is ${selected.name}'s detailed 80 m skyline adjusted by the change our ~600 m terrain grid sees over that distance. Slope and hazards at this spot are not checked.`,
-          horizonDeg: h.horizon,
-        };
-        out.push({ site, km, samples: siteSeries(site, skies) });
-      });
-    }
-    return out;
-  }, [selected, elevation, skies]);
+    const spots = selected && nearbyData ? nearbyData[selected.id] : undefined;
+    if (!selected || !spots) return [];
+    return spots.map((n) => {
+      const site = nearbySite(selected, n);
+      return { site, km: n.km, samples: siteSeries(site, skies) };
+    });
+  }, [selected, nearbyData, skies]);
 
   /** The same landing under adverse assumptions: which one breaks the plan. */
   const stress = useMemo(
@@ -964,7 +957,7 @@ export default function App() {
                               : sunAtHeight(s) !== undefined ? `${sunAtHeight(s)!.toFixed(0)}%` : "…"}
                           </span>
                           <span className={lr?.survives ? "rank-score ok" : "rank-score bad"}>
-                            {lr ? (lr.survives ? `✓ ${lr.minSocPct.toFixed(0)}%` : "✗ dies") : "—"}
+                            {lr ? (lr.survives ? `✓ ${lr.minSocPct.toFixed(0)}%` : lr.failure === "earth" ? "✗ Earth" : "✗ dies") : "—"}
                           </span>
                         </button>
                       );
@@ -1076,7 +1069,7 @@ export default function App() {
                 </div>
               )}
               {finderResult && finderResult.top.length === 0 && <p className="fineprint">Nothing passes all four limits. Relax one of them.</p>}
-              <p className="fineprint fp-note" title="Each ~600 m cell keeps three 60 m spots from NASA's LOLA products (PGDA 69: 18.6-year Sun and Earth visibility, permanent shadow): the sunniest, the sunniest under 8° slope and the sunniest under 4°. A cell is green when one of them meets every limit. Permanent shadow is where ice can survive; it does not prove ice is there.">
+              <p className="fineprint fp-note" title="Every 60 m pixel of NASA's LOLA products (PGDA 69: 18.6-year Sun and Earth visibility, permanent shadow) is checked against your limits: each ~600 m cell keeps every spot that no other spot in it beats on all four values. A cell is green when any of its 60 m spots meets every limit. Permanent shadow is where ice can survive; it does not prove ice is there.">
                 Built from NASA's LOLA sunlight, Earth and permanent-shadow maps at 60 m; slope from 80 m terrain, which cannot prove a lander footprint is safe. A spot opens at its exact position for the full check.
               </p>
             </section>
@@ -1108,7 +1101,7 @@ export default function App() {
           <section className={verdictClass} id="lander-card" aria-live="polite" data-tour-focus={tourStep === 1 || tourStep === 2}>
             <div className="vh-top">
               <span className="vh-k">Land on {fmtDay(currentMs)}, stay {missionDays} days</span>
-              {selected?.id === "custom" && selected.terrain && <span className="vh-prelim" title="Coarse 600 m terrain: an early estimate">Preliminary</span>}
+              {selected?.id === "custom" && selected.terrain && !selected.nearOf && <span className="vh-prelim" title="Coarse 600 m terrain: an early estimate">Preliminary</span>}
             </div>
             <div className="vh-main">
               {!selLander ? "…" : !missionFits
@@ -1420,7 +1413,7 @@ export default function App() {
                 <div className="legend-inline">
                   <span><i className="chip chip-ok" />Survives easily</span>
                   <span><i className="chip chip-low" />Only just</span>
-                  <span><i className="chip chip-lost" />Battery dies</span>
+                  <span><i className="chip chip-lost" />Fails (battery or Earth)</span>
                 </div>
                 <label className="pc-toggle">
                   <input type="checkbox" checked={showRefs} onChange={(e) => setShowRefs(e.target.checked)} /> Older sites
@@ -1485,8 +1478,8 @@ export default function App() {
                       {r.ser.length > 1 && <TimelineStrip samples={r.ser.slice(0, YEAR_N)} currentMs={currentMs} onScrub={setCurrentMs} height={34} />}
                     </div>
                     <span className={!r.run || !missionFits ? "cmp-verdict" : r.run.survives ? "cmp-verdict ok" : "cmp-verdict bad"}
-                          title={r.run && missionFits ? (r.run.survives ? `Survives; battery never below ${r.run.minSocPct.toFixed(0)}% of usable charge` : `Battery dies ${fmtDate(r.run.lostAt!)}`) : ""}>
-                      {!r.run || !missionFits ? "—" : r.run.survives ? `✓ ${r.run.minSocPct.toFixed(0)}%` : "✗ dies"}
+                          title={r.run && missionFits ? (r.run.survives ? `Survives; battery never below ${r.run.minSocPct.toFixed(0)}% of usable charge` : r.run.failure === "earth" ? `Earth hidden too long from ${fmtDate(r.run.earthFailAt!)}` : `Battery limit ${fmtDate(r.run.lostAt!)}`) : ""}>
+                      {!r.run || !missionFits ? "—" : r.run.survives ? `✓ ${r.run.minSocPct.toFixed(0)}%` : r.run.failure === "earth" ? "✗ Earth" : "✗ dies"}
                     </span>
                     <div className="cmp-stats">
                       <button className="cmp-name" onClick={() => setSelectedId(r.site.id)}>{r.site.name}</button>
@@ -1544,6 +1537,7 @@ export default function App() {
           mode={arrayMode}
           heightM={selected.heights ? panelHeight : 0}
           run={selLander}
+          req={req}
           sizing={sizing}
           next={nextSurvivable}
           reading={reading}
@@ -1595,10 +1589,10 @@ export default function App() {
               draws a 120 × 120 km block of the same ~600 m grid around the site, lowered for the Moon's
               curvature and lit from the computed Sun direction; its shadows come from that block only, so
               the sunlit verdict always uses the full 150 km horizon. The site finder covers 85–90°S using
-              only NASA's LOLA products: for every ~300 m cell it takes the sunniest 60 m spot in the 18.6-year
-              sunlight map (PGDA product 69), the Earth-visibility value at that same spot, the slope there from
-              the 80 m terrain, and the distance to the nearest permanently shadowed pixel in NASA's LPSR map, then
-              tests them against the limits you set (<code>npm run finder</code> rebuilds it).
+              only NASA's LOLA products: every 60 m pixel has its 18.6-year sunlight and Earth visibility (PGDA
+              product 69), its slope from the 80 m terrain and its distance to the nearest permanently shadowed pixel
+              in NASA's LPSR map. Each ~600 m cell keeps every pixel that no other pixel in it beats on all four, so a
+              cell passes the limits you set exactly when one of its pixels does (<code>npm run finder</code> rebuilds it).
             </p>
             <p>
               Sites: NASA's nine Artemis III candidate regions (October 2024), plus the 2022 regions since
@@ -2137,7 +2131,7 @@ function StressCard({ cases, limiting, robust, lander, landMs, onLand, onLander,
           )}
           <span className="stress-note">
             Every alternative is run on all {cases.length} cases, with its terrain case calibrated on that spot.
-            {robust.nearTested > 0 && " Nearby skylines are preliminary (this site's skyline adjusted by our ~600 m grid); slope there is not checked."}
+            {robust.nearTested > 0 && " Nearby positions have their own 80 m skylines (same method as the sites, ground level); slope there is not checked."}
           </span>
         </div>
       )}
@@ -2243,6 +2237,7 @@ function SocSpark({ soc, lostFrac, startMs, days }: { soc: Float32Array; lostFra
 function MissionBrief(p: {
   site: Site; landMs: number; days: number; spec: LanderSpec; mode: ArrayMode; heightM: number;
   run: MissionResult;
+  req?: MissionRequirements;
   sizing: { batteryWh: number | null; arrayM2: number | null } | null; next: number | null;
   reading: { sunElev: number; sunAz: number; lit: boolean; earthElev: number; earthAz: number; comm: boolean };
   sunFlipMs: number | null; earthFlipMs: number | null;
@@ -2268,7 +2263,7 @@ function MissionBrief(p: {
           </div>
         </div>
         <div className={run.survives ? "brief-verdict ok" : "brief-verdict bad"}>
-          {run.survives ? "SURVIVES" : run.failure === "earth" ? "EARTH OUT OF VIEW TOO LONG" : "BATTERY DIES"}
+          {run.survives ? "SURVIVES" : run.failure === "earth" ? "EARTH OUT OF VIEW TOO LONG" : (p.req?.reservePct ?? 0) > 0 ? "RESERVE BREACHED" : "BATTERY DIES"}
           <span>{run.survives ? `lowest charge ${run.minSocPct.toFixed(1)}% of usable` : run.failure === "earth" ? `Earth limit exceeded ${fmtDate(run.earthFailAt!)}` : `lost ${fmtDate(run.lostAt!)}`}</span>
         </div>
       </header>
@@ -2331,59 +2326,6 @@ function MissionBrief(p: {
       </footer>
     </section>
   );
-}
-
-/** One row per 30-minute step of the mission, for anyone who wants to check our numbers. */
-function missionCsv(o: {
-  site: Site; samples: { t: number; lit: boolean; comm: boolean; sunElev: number; sunAz?: number; sunFrac?: number; earthElev: number }[];
-  startIdx: number; steps: number; soc: Float32Array; mode: ArrayMode; spec: LanderSpec; heightM: number;
-  result: MissionResult; req: MissionRequirements; stress: StressCase[];
-}) {
-  const { site, spec, result: r, req } = o;
-  const iso = (ms: number | null) => (ms === null ? "" : new Date(ms).toISOString());
-  const verdict = r.survives
-    ? "survives"
-    : r.failure === "earth"
-      ? `fails: Earth hidden longer than ${req.maxEarthOutageH} h,from ${iso(r.earthFailAt)}`
-      : r.failure === "battery"
-        ? `fails: battery reaches ${req.reservePct ? `the ${req.reservePct}% reserve` : "zero"},at ${iso(r.lostAt)}`
-        : "unknown: the mission runs past the modelled data";
-  const caseCell = (c: StressCase) =>
-    !c.result ? "unknown" : c.result.survives ? `pass min ${c.result.minSocPct.toFixed(0)}%` : c.result.failure === "earth" ? `fail Earth ${iso(c.result.earthFailAt)}` : `fail battery ${iso(c.result.lostAt)}`;
-  const head = [
-    `# SUNLOCK mission export`,
-    `# site,${site.name.replace(/,/g, " ")},lat ${site.lat},lon ${site.lon}${site.publishedSite ? `,published site ${site.publishedSite}` : ""}`,
-    `# lander,load ${spec.loadW} W,panels ${spec.arrayM2} m2 (${{ tracking: "face Sun", vertical: "upright on four sides", horizontal: "flat" }[o.mode]}),heaters in the dark ${spec.heaterW ?? 0} W,battery ${spec.batteryWh / 1000} kWh,depth of discharge ${spec.dod},panel height ${o.heightM} m`,
-    `# requirements,battery charge at landing ${req.initialSocPct ?? 100}%,reserve to keep ${req.reservePct ?? 0}%,longest time without Earth in view ${req.maxEarthOutageH != null ? `${req.maxEarthOutageH} h` : "no limit"}`,
-    `# result,${verdict}`,
-    `# result detail,lowest charge ${r.minSocPct.toFixed(1)}% of usable,longest Earth outage ${r.longestEarthOutageH.toFixed(1)} h`,
-    `# stress cases,${o.stress.filter((c) => c.result?.survives).length} of ${o.stress.length} pass${o.stress.some((c) => !c.result) ? ` (${o.stress.filter((c) => !c.result).length} unknown)` : ""}`,
-    ...o.stress.map((c) => `# stress,${c.label.replace(/,/g, " ")},${caseCell(c)}`),
-    `# horizon,${
-      site.terrain === false
-        ? "edge of the lunar sphere (no terrain data outside 80-90 S)"
-        : site.nearOf
-          ? `nearby position: the named site's LOLA LDEM_80S_80M skyline adjusted by the change on a ~600 m grid (preliminary)`
-          : site.id === "custom"
-          ? "LOLA terrain on a ~600 m grid, 150 km reach (preliminary)"
-          : "LOLA LDEM_80S_80M terrain, 360 azimuths, 150 km reach, curvature included"
-    }`,
-    `# model,Sun and Earth from Astronomy Engine in the IAU 2015 lunar frame (Earth seen from the surface); sunlit = any part of the solar disc above the skyline; panel power uses the visible share of the disc; heaters run while less than half the disc is up; first-order energy model, not a flight analysis`,
-    `# timestamps,start of each 30-minute step; battery_pct is at the end of the step`,
-    `time_utc,sun_elev_deg,sunlit,sun_visible_fraction,earth_elev_deg,earth_in_view,panel_power_w,battery_pct_of_usable`,
-  ];
-  const rows: string[] = [];
-  const end = Math.min(o.samples.length, o.startIdx + o.steps);
-  for (let i = o.startIdx; i < end; i++) {
-    const s = o.samples[i];
-    const p = arrayPowerPerM2(s.sunElev, s.sunFrac ?? s.lit, o.mode, s.sunAz) * spec.arrayM2;
-    rows.push([
-      new Date(s.t).toISOString().slice(0, 16) + "Z",
-      s.sunElev.toFixed(3), s.lit ? 1 : 0, (s.sunFrac ?? (s.lit ? 1 : 0)).toFixed(3), s.earthElev.toFixed(3), s.comm ? 1 : 0,
-      p.toFixed(1), o.soc[i - o.startIdx].toFixed(1),
-    ].join(","));
-  }
-  return [...head, ...rows].join("\n") + "\n";
 }
 
 function downloadText(name: string, text: string) {
