@@ -104,6 +104,11 @@ magnitude below the 80 m terrain resolution. Output is committed at
   visibility product (`AVGVISIB_85S_060M`, PGDA product 69) at 451 points: **r = 0.995,
   RMSE 1.4 percentage points**. That comparison found a 180° horizon/azimuth error in an
   earlier build, which is now fixed.
+- **Validated against photographs (pre-registered H3).** LROC's WAC illumination map counts how
+  often each 100 m pixel was lit in 3,807 camera images over 2010–11, with no LOLA product in
+  between. On the pre-registered random sample (296 points inside its 88–90°S coverage), our
+  sunlight over the same year gives **r = 0.980, RMSE 3.1 points, bias +1.6** (threshold r ≥ 0.85).
+  See `research/validation/result-wac.json`.
 - **73% illumination** at the peak near Shackleton over 180 days. This is a region centre,
   not a searched optimum, which is why it sits below the ~85–88% published for optimised
   clusters.
@@ -122,6 +127,29 @@ cd web
 npm install
 npm run dev
 ```
+
+## Rebuild the data from NASA's archives
+
+Every map, site, finder and validation file is derived from pinned NASA products, listed with
+their official URLs, sizes and SHA-256 in [`data/sources.json`](data/sources.json):
+LOLA `LDEM_80S_80M` terrain (PDS Geosciences Node), the LOLA team's 18.6-year Sun/Earth visibility
+and permanent-shadow maps (PGDA product 69) and the LROC WAC illumination map.
+
+```bash
+node scripts/fetch-data.mjs        # download what is missing; refuse anything whose hash differs
+cd web
+npm run data                       # rebuild every stage whose code or inputs changed
+npm run data -- --check            # exit 1 if any shipped file is stale or was edited by hand
+```
+
+The pipeline (`web/scripts/pipeline.mjs`) runs, in order: terrain grids, validation against the
+LOLA maps (pre-registered H1, H2, H4), validation against LROC WAC (H3), site selection, nearby
+positions, the site finder, mission markers and the nearby-position validation. It writes
+[`web/public/terrain/manifest.json`](web/public/terrain/manifest.json): for every output, its
+SHA-256, the stage that made it and the hash of every input and script that went into it. A test
+(`tests/provenance.test.mjs`) fails if any shipped file no longer matches the manifest.
+Benchmarks (`npm run bench*`) and the JPL Horizons check (`npm run verify`, needs network) stay
+separate commands.
 
 Terrain assets are committed under `web/public/terrain/`. To rebuild them from the raw DEM:
 

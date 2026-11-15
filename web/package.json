@@ -19,7 +19,10 @@
     "missions": "node scripts/build-missions.mjs",
     "finder": "node scripts/build-finder.mjs",
     "validate:nearby": "tsc --ignoreConfig src/lib/selene.ts src/lib/power.ts src/lib/analysis.ts src/lib/terrain.ts --outDir .build --module esnext --target es2022 --moduleResolution bundler --skipLibCheck --types vite/client && sed -i '' -E 's|from \"\\./([a-z]+)\"|from \"./\\1.js\"|' .build/analysis.js .build/terrain.js && node scripts/validate-nearby.mjs",
-    "nearby": "tsc --ignoreConfig src/lib/selene.ts src/lib/terrain.ts --outDir .build --module esnext --target es2022 --moduleResolution bundler --skipLibCheck --types vite/client && sed -i '' -E 's|from \"\\./([a-z]+)\"|from \"./\\1.js\"|' .build/terrain.js && node scripts/build-nearby.mjs"
+    "nearby": "tsc --ignoreConfig src/lib/selene.ts src/lib/terrain.ts --outDir .build --module esnext --target es2022 --moduleResolution bundler --skipLibCheck --types vite/client && sed -i '' -E 's|from \"\\./([a-z]+)\"|from \"./\\1.js\"|' .build/terrain.js && node scripts/build-nearby.mjs",
+    "validate:wac": "tsc --ignoreConfig src/lib/selene.ts --outDir .build --module esnext --target es2022 --moduleResolution bundler --skipLibCheck && node scripts/validate-wac.mjs",
+    "data": "node scripts/pipeline.mjs",
+    "data:check": "node scripts/pipeline.mjs --check"
   },
   "dependencies": {
     "astronomy-engine": "^2.1.19",

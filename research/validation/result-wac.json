@@ -1,0 +1,81 @@
+{
+  "hypothesis": "H3: our illumination reproduces the LROC WAC map over its own year, r >= 0.85 (pre-registered)",
+  "reference": "WAC_POLE_ILL_TWI_SOUTH_100M v1.3 (LROC, Speyerer & Robinson 2013), 100 m/px, 88-90 S",
+  "window": {
+    "start": "2010-02-15",
+    "end": "2011-02-05",
+    "stepHours": 1,
+    "steps": 8520
+  },
+  "sample": {
+    "seed": 20261511,
+    "drawn": 2000,
+    "outsideWacCoverage": 1700,
+    "invalid": 4,
+    "used": 296
+  },
+  "registration": {
+    "what": "r between the WAC map and NASA's LOLA AVGVISIB at the sample points, per axis orientation (independent of SUNLOCK)",
+    "x+y+": 0.9668,
+    "x-y+": 0.0707,
+    "x+y-": -0.0278,
+    "x-y-": 0.0373
+  },
+  "converged": {
+    "n": 296,
+    "r": 0.9798,
+    "rmsePct": 3.09,
+    "biasPct": 1.59
+  },
+  "shipped": {
+    "n": 296,
+    "r": 0.9638,
+    "rmsePct": 4.76,
+    "biasPct": 2.7
+  },
+  "result": "pass",
+  "bandsConverged": [
+    {
+      "band": "0-20%",
+      "n": 229,
+      "biasPct": 1.4
+    },
+    {
+      "band": "20-50%",
+      "n": 67,
+      "biasPct": 2.26
+    },
+    {
+      "band": "50-80%",
+      "n": 0,
+      "biasPct": null
+    },
+    {
+      "band": "80-101%",
+      "n": 0,
+      "biasPct": null
+    }
+  ],
+  "namedSites": [
+    {
+      "site": "de Gerlache Rim 2",
+      "wacPct": 29.1,
+      "oursPct": 71.9,
+      "nasaLolaPct18y": 72.5,
+      "note": "a single 60 m crest pixel in NASA's LOLA map (40-55% within 120 m around it); WAC's 100 m, photo-registered pixels cannot resolve it, so this point is not counted against either map"
+    }
+  ],
+  "secondary": {
+    "what": "sensitivity only, not pre-registered: points with WAC >= 5% (scattered light inflates near-zero WAC values)",
+    "converged": {
+      "n": 157,
+      "r": 0.9549,
+      "rmsePct": 3.98,
+      "biasPct": 2.44
+    }
+  },
+  "deviations": [
+    "Named sites: only current sites inside the WAC map's 88-90 S coverage can be compared; they are listed individually (namedSites) and not pooled into r, since two or three points would not change it and would mix a curated set into a random sample.",
+    "Horizon reach: the adopted converged convention uses 150 km (decided after H1, documented in validate-lola.mjs); the shipped convention keeps the pre-registered 64 km."
+  ]
+}

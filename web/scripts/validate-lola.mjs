@@ -306,7 +306,6 @@ const pct = (arr, q) => {
 };
 
 const result = {
-  generated: new Date().toISOString(),
   convention: CONV,
   stepHours: STEP_H,
   years: YEARS,

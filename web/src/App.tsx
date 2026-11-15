@@ -47,7 +47,7 @@ type Validation = {
     shadow?: { n: number; iou: number; tp: number; fp: number; fn: number } | null;
     earth?: { n: number; r: number; rmsePp: number; biasPp: number } | null;
   };
-  preregistered?: Record<string, { test: string; result: string }>;
+  preregistered?: Record<string, { test: string; result: string; n?: number; r?: number; rmsePp?: number }>;
   landingSites: { n: number; r: number; rmsePp: number; biasPp: number; within5pp: number; stepHours: number };
   earthAtLandingSites?: { n: number; r: number; rmsePp: number; biasPp: number };
 };
@@ -1642,11 +1642,18 @@ export default function App() {
                         {v.result === "pass" ? "PASS" : v.result === "fail" ? "FAIL" : "NOT RUN"}
                       </span>{" "}
                       {k}: {v.test}
+                      {v.r !== undefined && <> · measured r = {v.r.toFixed(3)}{v.rmsePp !== undefined && `, RMSE ${v.rmsePp.toFixed(1)} pts`}{v.n !== undefined && ` (n = ${v.n})`}</>}
                     </li>
                   ))}
                 </ul>
               </div>
             )}
+            <p className="fineprint">
+              Data provenance: every map, site and validation file here is rebuilt from pinned NASA products (LOLA terrain, the
+              LOLA team's illumination maps, LROC WAC) by one command, <code>npm run data</code>; the SHA-256 of each NASA input
+              and each output is in <a href={`${import.meta.env.BASE_URL}terrain/manifest.json`} target="_blank" rel="noreferrer">manifest.json</a>,
+              and <code>node scripts/fetch-data.mjs</code> downloads the inputs from NASA's archives and checks them.
+            </p>
             <p>
               Ephemeris: Sun and Earth vectors from <b>Astronomy Engine</b> (VSOP87/ELP-based), rotated into
               the lunar body-fixed frame using the IAU WGCCRE 2015 mean Earth/polar axis model. A site is

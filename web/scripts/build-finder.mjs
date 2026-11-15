@@ -168,7 +168,6 @@ const meta = {
   n: OUT_N, layout: "pareto-v1", spots: total, bytesPerCandidate: B, cellM: +CELL_M.toFixed(4), halfM: HALF_M, pixM: PIX, off: OFF,
   candidate: ["sunPct", "earthPct", "slopeDegX4", "psrKmX20", "dxPixel", "dyPixel"],
   sources: ["AVGVISIB_85S_060M_201608", "AVGVISIB_85S_060M_201608_EARTH", "LPSR_85S_060M_201608", "LDEM_80S_80M"],
-  generated: new Date().toISOString(),
 };
 fs.writeFileSync(path.join(ROOT, "web/public/terrain/finder.json"), JSON.stringify(meta));
 console.log(`wrote ${path.relative(ROOT, file)} (${(out.length / 1e6).toFixed(1)} MB)`);

@@ -210,7 +210,6 @@ const regions = Object.entries(REGIONS).map(([code, meta]) => {
 });
 
 fs.writeFileSync(path.join(ROOT, "web/public/terrain/regions.json"), JSON.stringify({
-  generated: new Date().toISOString(),
   method: {
     baseline: "18.6 years from 2010-01-01", stepHours: STEP_H,
     horizon: "converged: bilinear LOLA LDEM_80S_80M, 40 m steps, 150 km reach",
@@ -251,7 +250,12 @@ fs.writeFileSync(path.join(ROOT, "web/public/terrain/regions.json"), JSON.string
     preregistered: {
       H1: { test: "sunlight r >= 0.90 and |bias| <= 5 pp", result: mapWide.h1.r >= 0.9 && Math.abs(mapWide.h1.biasPct) <= 5 ? "pass" : "fail" },
       H2: { test: "permanent-shadow IoU >= 0.80", result: mapWide.h2 ? (mapWide.h2.iou >= 0.8 ? "pass" : "fail") : "not run" },
-      H3: { test: "LROC WAC r >= 0.85", result: "not run" },
+      H3: (() => {
+        const f = path.join(ROOT, "research/validation/result-wac.json");
+        if (!fs.existsSync(f)) return { test: "LROC WAC r >= 0.85", result: "not run" };
+        const w = JSON.parse(fs.readFileSync(f, "utf8"));
+        return { test: "LROC WAC r >= 0.85", result: w.result, n: w.converged.n, r: w.converged.r, rmsePp: w.converged.rmsePct, biasPp: w.converged.biasPct };
+      })(),
       H4: { test: "Earth visibility r >= 0.90", result: mapWide.h4 ? (mapWide.h4.r >= 0.9 ? "pass" : "fail") : "not run" },
     },
     landingSites: {

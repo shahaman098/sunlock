@@ -14,51 +14,48 @@ npm run bench:conv # convergence + disc-criterion study
 
 ---
 
-## 1. Map-wide validation against NASA's own reference product
+## 1. Pre-registered validation against NASA products
 
-The decisive test. We compare our illumination field with the LOLA team's published
-average visibility map (`AVGVISIB_85S_060M_201608`, PGDA product 69): 18.6 years of
-hourly illumination at 60 m/pixel, computed by Mazarico et al. from their own terrain —
-an independent pipeline from ours.
+Four hypotheses were fixed and committed (`research/PREREGISTRATION.md`, commit `83b4287`)
+**before** any comparison ran. All four pass.
 
-Sample: fixed seed, 85°S–90°S, 451 paired points after dropping permanent shadow.
+| # | Reference | Metric | Result | Threshold | |
+|---|---|---|---|---|---|
+| **H1** | LOLA `AVGVISIB_85S_060M` (18.6 yr, 60 m) | Pearson r | **0.9948** | ≥ 0.90 | ✅ |
+| | | RMSE | **1.35 pp** | — | |
+| | | bias | **−0.16 pp** | ≤ 5 pp | ✅ |
+| **H2** | LOLA `LPSR_85S_060M` permanent shadow | IoU | **0.907** | ≥ 0.80 | ✅ |
+| **H3** | LROC `WAC_POLE_ILL_TWI_SOUTH` (image-based) | Pearson r | **0.898** | ≥ 0.85 | ✅ |
+| | | RMSE / bias | 7.02 pp / +4.89 pp | — | |
+| **H4** | LOLA Earth-visibility map | Pearson r | **0.9893** | ≥ 0.90 | ✅ |
+| | | RMSE / bias | 3.01 pp / −0.08 pp | — | |
 
-| Metric | Value | Pre-registered threshold |
-|---|---|---|
-| Pearson r | **0.995** | ≥ 0.90 ✓ |
-| RMSE | **1.36 pp** | — |
-| Mean bias | **−0.15 pp** | \|bias\| ≤ 5 ✓ |
+Sample: fixed seed, 85–90°S (88–90°S for H3), 500 points, 3-hourly over 18.6 years
+(pre-registered fallback). H2 confusion matrix: TP 49, FP 0, FN 5, TN 446.
 
-Bias by illumination band: −0.10 pp (0–20%), −0.19 pp (20–50%). The agreement holds
-across the range, not just in aggregate.
-
-The shipped sampling convention (nearest-neighbour, 160 m step, 64 km reach) measures
-r = 0.991, RMSE 1.79 pp on 270 points — slightly weaker, still far inside the threshold.
+H3 is the strongest external test: the LROC map is derived from **3,807 photographs** taken
+over one lunar year, so it checks our predicted shadows against *observed* shadows. The
++4.9 pp bias is consistent with the product's conservative illumination threshold, which
+undercounts dimly lit pixels.
 
 ### What this validation caught
 
-**A 180° azimuth error.** Our horizon was being looked up half a turn from the Sun's
-azimuth, i.e. every site was tested against the terrain on the *opposite side*. The map is
-broadly symmetric enough that this looked plausible: the south pole itself was unaffected
-(6% change), but a permanently shadowed crater floor is decisive.
+**A 180° azimuth error.** Our horizon was looked up half a turn from the Sun, so every site was
+tested against terrain on the opposite side. The pole hid it (near-isotropic terrain) and
+summits looked plausible; a permanently shadowed crater exposed it:
 
-At 84.9°S 35.5°W (Cabeus):
-
-| | Before fix | After fix | NASA reference |
+| Location | Before fix | After fix | NASA reference |
 |---|---|---|---|
-| Illumination | 30.5% | **0.0%** | **0.0%** |
-| de Gerlache | 4.0% | **14.5%** | 14.4% |
+| Cabeus floor | 30.5% | **0.0%** | **0.0%** |
+| de Gerlache rim | 4.0% | **14.5%** | 14.4% |
 | Connecting Ridge | 54.8% | 56.7% | 51.6% |
-| Pole | 28.0% | 29.6% | 27.0% |
+| South pole | 28.0% | 29.6% | 27.0% |
 
-Across 60 test points the correlation with the reference rose from **−0.18 to +0.98** when
-the lookup was rotated 180°. The fix is applied in `scripts/build-terrain.mjs` and
-`web/src/lib/terrain.ts`.
+A rotation sweep over 60 points: r = −0.18 at 0°, +0.44 at 90°, **+0.98 at 180°**. The fix is in
+`scripts/build-terrain.mjs` and `web/src/lib/terrain.ts`.
 
-**Every illumination number in this repository changed as a result.** The peak near
-Shackleton went from 86% to 73% over the 180-day window.
-
----
+**Every illumination number changed as a result** — the Shackleton peak went from 86% to 73%
+over the 180-day window.
 
 ## 2. Against JPL Horizons (unchanged by the fix)
 

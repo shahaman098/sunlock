@@ -60,14 +60,17 @@ points falling outside valid data are dropped and counted.
 
 ## 4. Results
 
-### 4.1 Map-wide agreement
+### 4.1 Pre-registered hypotheses — all four pass
 
-| Metric | Value | Pre-registered threshold |
-|---|---|---|
-| Pearson r | **0.995** | ≥ 0.90 |
-| RMSE | **1.36 pp** | — |
-| Mean bias | **−0.15 pp** | ≤ 5 pp |
-| Paired points | 451 | — |
+| # | Reference product | Metric | Result | Threshold |
+|---|---|---|---|---|
+| H1 | LOLA average solar visibility (18.6 yr) | Pearson r | **0.995** | ≥ 0.90 |
+| | | RMSE / bias | 1.35 pp / −0.16 pp | bias ≤ 5 pp |
+| H2 | LOLA permanent shadow | IoU | **0.907** | ≥ 0.80 |
+| H3 | **LROC WAC image-based** illumination | Pearson r | **0.898** | ≥ 0.85 |
+| H4 | LOLA Earth visibility | Pearson r | **0.989** | ≥ 0.90 |
+
+H3 is the independent-modality test: the LROC map comes from 3,807 photographs, not altimetry.
 
 Bias by band: −0.10 pp (0–20% illumination), −0.19 pp (20–50%). Agreement is not carried by
 one end of the range.

@@ -42,5 +42,5 @@ for (const s of meta.sites.filter((x) => x.current !== false)) {
   process.stderr.write(`${s.id} `);
 }
 const file = path.join(ROOT, "web/public/terrain/nearby.json");
-fs.writeFileSync(file, JSON.stringify({ source: "LOLA LDEM_80S_80M, converged convention (40 m bilinear steps, 150 km, curvature)", generated: new Date().toISOString(), sites: out }));
+fs.writeFileSync(file, JSON.stringify({ source: "LOLA LDEM_80S_80M, converged convention (40 m bilinear steps, 150 km, curvature)", sites: out }));
 console.log(`\nwrote ${path.relative(ROOT, file)} (${(fs.statSync(file).size / 1e3).toFixed(0)} kB)`);

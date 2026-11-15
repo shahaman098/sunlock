@@ -36,13 +36,15 @@ ul { margin: 0 0 6pt 16pt; }
 <p>For each sample point we ray-march a 360-azimuth horizon on the 80 m elevation model to a 150 km reach, subtracting the lunar curvature drop <code>d²/2R</code>. Sun and Earth directions come from Astronomy Engine, rotated into the IAU 2015 lunar frame. A point is illuminated when any part of the 0.266° solar disc clears the horizon in the Sun&#x27;s azimuth.</p>
 <p>Sampling: fixed seed, 2,000 points uniform in area over 85–90°S plus the nine named regions; points falling outside valid data are dropped and counted.</p>
 <h2>4. Results</h2>
-<h3>4.1 Map-wide agreement</h3>
-<table><thead><tr><th>Metric</th><th>Value</th><th>Pre-registered threshold</th></tr></thead><tbody>
-<tr><td>Pearson r</td><td><strong>0.995</strong></td><td>≥ 0.90</td></tr>
-<tr><td>RMSE</td><td><strong>1.36 pp</strong></td><td>—</td></tr>
-<tr><td>Mean bias</td><td><strong>−0.15 pp</strong></td><td>≤ 5 pp</td></tr>
-<tr><td>Paired points</td><td>451</td><td>—</td></tr>
+<h3>4.1 Pre-registered hypotheses — all four pass</h3>
+<table><thead><tr><th>#</th><th>Reference product</th><th>Metric</th><th>Result</th><th>Threshold</th></tr></thead><tbody>
+<tr><td>H1</td><td>LOLA average solar visibility (18.6 yr)</td><td>Pearson r</td><td><strong>0.995</strong></td><td>≥ 0.90</td></tr>
+<tr><td></td><td></td><td>RMSE / bias</td><td>1.35 pp / −0.16 pp</td><td>bias ≤ 5 pp</td></tr>
+<tr><td>H2</td><td>LOLA permanent shadow</td><td>IoU</td><td><strong>0.907</strong></td><td>≥ 0.80</td></tr>
+<tr><td>H3</td><td><strong>LROC WAC image-based</strong> illumination</td><td>Pearson r</td><td><strong>0.898</strong></td><td>≥ 0.85</td></tr>
+<tr><td>H4</td><td>LOLA Earth visibility</td><td>Pearson r</td><td><strong>0.989</strong></td><td>≥ 0.90</td></tr>
 </tbody></table>
+<p>H3 is the independent-modality test: the LROC map comes from 3,807 photographs, not altimetry.</p>
 <p>Bias by band: −0.10 pp (0–20% illumination), −0.19 pp (20–50%). Agreement is not carried by one end of the range.</p>
 <p>The shipped convention — nearest-neighbour sampling at a 160 m interval — scores r = 0.991, RMSE 1.79 pp on 270 points. The pre-registered hypothesis passes under both.</p>
 <h3>4.2 The defect the test found</h3>

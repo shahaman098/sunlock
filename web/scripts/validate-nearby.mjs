@@ -143,7 +143,6 @@ const over = pub.map((s) => s.sunPct - s.nasaSunPct);
 
 const result = {
   what: "nearby positions (1 and 2 km, 8 directions) around the 9 current Artemis III sites",
-  generated: new Date().toISOString(),
   n: rows.length,
   sunlight18y: {
     note: "percentage points; A = adjusted skyline (rejected), B = full 80 m skyline at the point (what the app uses), NASA = AVGVISIB_85S_060M_201608 (points inside 85-90 S only)",

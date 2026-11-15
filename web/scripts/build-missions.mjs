@@ -75,6 +75,6 @@ const out = MISSIONS.map((m) => {
 });
 
 const file = path.join(ROOT, "web/public/terrain/missions.json");
-fs.writeFileSync(file, JSON.stringify({ generated: new Date().toISOString(), source: "web/scripts/build-missions.mjs", missions: out }));
+fs.writeFileSync(file, JSON.stringify({ source: "web/scripts/build-missions.mjs", missions: out }));
 for (const m of out) console.log(m.name.padEnd(24), m.lat.toFixed(3).padStart(8), String(m.lon).padStart(9), m.terrain ? `terrain, max horizon ${Math.max(...m.horizonDeg).toFixed(2)} deg, ${m.elevationM} m` : "sphere");
 console.log(`wrote ${out.length} missions to ${path.relative(ROOT, file)}`);

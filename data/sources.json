@@ -1,0 +1,178 @@
+{
+  "about": "Every NASA input SUNLOCK is built or validated from, with its official URL, size and SHA-256 of the copy we used. `node scripts/fetch-data.mjs` downloads anything missing and refuses a file whose size or hash differs.",
+  "files": [
+    {
+      "id": "ldem_80s_80m",
+      "path": "data/raw/ldem_80s_80m.img",
+      "url": "https://pds-geosciences.wustl.edu/lro/lro-l-lola-3-rdr-v1/lrolol_1xxx/data/lola_gdr/polar/img/ldem_80s_80m.img",
+      "bytes": 115520000,
+      "sha256": "e6591eeea35402ca5e124ca00f5bf0774381a2d4fa919144b455d82b8ff65fdc",
+      "product": "LRO LOLA LDEM_80S_80M, 80 m/px south polar DEM (PDS Geosciences Node, LRO-L-LOLA-4-GDR-V1.0)",
+      "usedBy": [
+        "terrain",
+        "validate-lola",
+        "validate-wac",
+        "sites",
+        "nearby",
+        "finder",
+        "missions",
+        "validate-nearby"
+      ]
+    },
+    {
+      "id": "ldem_80s_40m",
+      "path": "data/raw/ldem_80s_40m.img",
+      "url": "https://pds-geosciences.wustl.edu/lro/lro-l-lola-3-rdr-v1/lrolol_1xxx/data/lola_gdr/polar/img/ldem_80s_40m.img",
+      "bytes": 462080000,
+      "sha256": "84665a59d6a5006c9ae1d92560470bcabe89a713a98f4c700692f088ae4ee2b1",
+      "product": "LRO LOLA LDEM_80S_40M, 40 m/px south polar DEM",
+      "usedBy": [
+        "bench:ray"
+      ],
+      "optional": true
+    },
+    {
+      "id": "ldem_875s_20m",
+      "path": "data/raw/ldem_875s_20m.img",
+      "url": "https://pds-geosciences.wustl.edu/lro/lro-l-lola-3-rdr-v1/lrolol_1xxx/data/lola_gdr/polar/img/ldem_875s_20m.img",
+      "bytes": 115034112,
+      "sha256": "dc16bba853b22fa29e26dc26b411acc180de70478578b2c75c8e6f253f56a9d9",
+      "product": "LRO LOLA LDEM_875S_20M, 20 m/px DEM poleward of 87.5 S",
+      "usedBy": [
+        "bench:ray",
+        "exp:20m"
+      ],
+      "optional": true
+    },
+    {
+      "id": "ldem_875s_20m_lbl",
+      "path": "data/raw/ldem_875s_20m.lbl",
+      "url": "https://pds-geosciences.wustl.edu/lro/lro-l-lola-3-rdr-v1/lrolol_1xxx/data/lola_gdr/polar/img/ldem_875s_20m.lbl",
+      "bytes": 4988,
+      "sha256": "b9973d9566090555a566537e0f86ee9e959138cc42504228bab7515b7d3e6b0f",
+      "product": "label for LDEM_875S_20M",
+      "usedBy": [
+        "bench:ray",
+        "exp:20m"
+      ],
+      "optional": true
+    },
+    {
+      "id": "avgvisib_85s",
+      "path": "research/validation/raw/AVGVISIB_85S_060M_201608.IMG",
+      "url": "http://imbrium.mit.edu/EXTRAS/ILLUMINATION/IMG/AVGVISIB_85S_060M_201608.IMG",
+      "bytes": 51166728,
+      "sha256": "82dadf321dee28f1947c1fed81858d4cf50fe8eb2aa405aae114e8ab21c1efe1",
+      "product": "LOLA team 18.6-year average Sun visibility, 60 m/px, 85-90 S (NASA PGDA product 69, Mazarico et al. 2011)",
+      "usedBy": [
+        "validate-lola",
+        "validate-wac",
+        "sites",
+        "finder",
+        "validate-nearby"
+      ]
+    },
+    {
+      "id": "avgvisib_85s_lbl",
+      "path": "research/validation/raw/AVGVISIB_85S_060M_201608.LBL",
+      "url": "http://imbrium.mit.edu/EXTRAS/ILLUMINATION/IMG/AVGVISIB_85S_060M_201608.LBL",
+      "bytes": 4094,
+      "sha256": "33decce957d5d4d9608557d8d969d1e1b94056a159b2563624ade4b528a0c917",
+      "product": "label for AVGVISIB_85S_060M_201608",
+      "usedBy": [
+        "validate-lola",
+        "validate-wac",
+        "sites",
+        "finder",
+        "validate-nearby"
+      ]
+    },
+    {
+      "id": "avgvisib_85s_earth",
+      "path": "research/validation/raw/AVGVISIB_85S_060M_201608_EARTH.IMG",
+      "url": "http://imbrium.mit.edu/EXTRAS/ILLUMINATION/IMG/AVGVISIB_85S_060M_201608_EARTH.IMG",
+      "bytes": 51166728,
+      "sha256": "0958313069d6039b2474c875ff662f28dbcba2bd853d9ea458aa807b7948c11f",
+      "product": "LOLA team 18.6-year average Earth visibility, 60 m/px, 85-90 S (PGDA product 69)",
+      "usedBy": [
+        "validate-lola",
+        "sites",
+        "finder"
+      ]
+    },
+    {
+      "id": "avgvisib_85s_earth_lbl",
+      "path": "research/validation/raw/AVGVISIB_85S_060M_201608_EARTH.LBL",
+      "url": "http://imbrium.mit.edu/EXTRAS/ILLUMINATION/IMG/AVGVISIB_85S_060M_201608_EARTH.LBL",
+      "bytes": 4111,
+      "sha256": "45a61697d779fdb9170bca2553f9e0188aeda1159811d3531c348df8f57f68bd",
+      "product": "label for AVGVISIB_85S_060M_201608_EARTH",
+      "usedBy": [
+        "validate-lola",
+        "sites",
+        "finder"
+      ]
+    },
+    {
+      "id": "lpsr_85s",
+      "path": "research/validation/raw/LPSR_85S_060M_201608.IMG",
+      "url": "http://imbrium.mit.edu/EXTRAS/ILLUMINATION/IMG/LPSR_85S_060M_201608.IMG",
+      "bytes": 51166728,
+      "sha256": "f8203cab342c817fc7851431e264def3cc64a3b8c30f032d61e0a44f1e4ef761",
+      "product": "LOLA team permanently shadowed regions, 60 m/px, 85-90 S (PGDA product 69)",
+      "usedBy": [
+        "validate-lola",
+        "sites",
+        "finder"
+      ]
+    },
+    {
+      "id": "lpsr_85s_lbl",
+      "path": "research/validation/raw/LPSR_85S_060M_201608.LBL",
+      "url": "http://imbrium.mit.edu/EXTRAS/ILLUMINATION/IMG/LPSR_85S_060M_201608.LBL",
+      "bytes": 3914,
+      "sha256": "42ae7cb0ae64ff8df7a17106228921bd07eb9afba8fb833c4a8cfd2f53487c0f",
+      "product": "label for LPSR_85S_060M_201608",
+      "usedBy": [
+        "validate-lola",
+        "sites",
+        "finder"
+      ]
+    },
+    {
+      "id": "wac_twi_south",
+      "path": "research/validation/raw/wac_twi.img",
+      "url": "https://pds.lroc.asu.edu/data/LRO-L-LROC-5-RDR-V1.0/LROLRC_2001/DATA/BDR/WAC_POLE/WAC_POLE_ILL_TWI_SOUTH/WAC_POLE_ILL_TWI_SOUTH_100M.IMG",
+      "bytes": 5904896,
+      "sha256": "dfecc026012fe24f67ca70ed21a09a1723ca0750bf3ec120f1a4ed2c4604717b",
+      "product": "LROC WAC_POLE_ILL_TWI_SOUTH_100M v1.3, image-based illumination 15 Feb 2010 - 5 Feb 2011, 100 m/px, 88-90 S (Speyerer & Robinson 2013)",
+      "usedBy": [
+        "validate-wac"
+      ]
+    },
+    {
+      "id": "wac_twi_south_xml",
+      "path": "research/validation/raw/wac_twi.xml",
+      "url": "https://pds.lroc.asu.edu/data/LRO-L-LROC-5-RDR-V1.0/LROLRC_2001/DATA/BDR/WAC_POLE/WAC_POLE_ILL_TWI_SOUTH/WAC_POLE_ILL_TWI_SOUTH_100M.xml",
+      "bytes": 12931,
+      "sha256": "720227bb767c77af6e6b4cfa23bf0a93c4cb3f299d6093c6c2f0483e9a615766",
+      "product": "PDS4 label for WAC_POLE_ILL_TWI_SOUTH_100M",
+      "usedBy": [
+        "validate-wac"
+      ]
+    },
+    {
+      "id": "wueller2026_sites",
+      "path": "research/data/wueller2026-landing-sites.csv",
+      "url": "https://doi.org/10.5281/zenodo.17084058",
+      "bytes": 4019,
+      "sha256": "545b948cef999a503a362932a620eda2a319cc92defaa79ea21890fab9de89b9",
+      "product": "Artemis III candidate landing sites, Wueller et al. (2026), JGR Planets, CC BY 4.0 (extracted from Landing_Sites.zip; committed in the repo)",
+      "usedBy": [
+        "sites",
+        "exp:20m"
+      ],
+      "inRepo": true
+    }
+  ]
+}

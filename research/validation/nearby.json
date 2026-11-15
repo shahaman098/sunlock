@@ -1,6 +1,5 @@
 {
  "what": "nearby positions (1 and 2 km, 8 directions) around the 9 current Artemis III sites",
- "generated": "2026-11-15T18:08:51.869Z",
  "n": 144,
  "sunlight18y": {
   "note": "percentage points; A = adjusted skyline (rejected), B = full 80 m skyline at the point (what the app uses), NASA = AVGVISIB_85S_060M_201608 (points inside 85-90 S only)",
