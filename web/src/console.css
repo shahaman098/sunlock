@@ -1238,3 +1238,19 @@
   .ex-scene.is-surface { left: 0; right: 0; }
   .ex-cam { max-width: none; }
 }
+
+/* ---- photograph against model, in "How it works" (components/PhotoCheck.tsx) */
+.pc { display: grid; gap: var(--s-15); padding: var(--s-2); border: 1px solid var(--hair); background: var(--panel-2); }
+.pc-grids { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s-15); }
+.pc-grids figure { margin: 0; display: grid; gap: 6px; }
+.pc-grids canvas { display: block; width: 100%; aspect-ratio: 1; image-rendering: pixelated; border: 1px solid var(--hair); background: #000; }
+.pc-grids figcaption { font-family: var(--mono); font-size: var(--fs-label); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.pc-bar { display: flex; align-items: center; gap: var(--s-15); }
+.pc-bar input { flex: 1; min-width: 0; accent-color: var(--blue); }
+.pc-when { flex: none; font-family: var(--mono); font-size: var(--fs-1); color: var(--ink); white-space: nowrap; }
+.pc-legend { display: flex; flex-wrap: wrap; gap: 4px var(--s-15); font-family: var(--body); font-size: var(--fs-label); color: var(--muted); }
+.pc-legend span { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.pc-legend i { display: inline-block; width: 10px; height: 10px; border: 1px solid var(--hair-strong); }
+.method-body .pc-frame { font-size: var(--fs-1); color: var(--muted); }
+.pc-sum { margin: 0; padding-left: 18px; display: grid; gap: 6px; font-family: var(--body); font-size: var(--fs-1); line-height: 1.55; color: var(--carbon-20); }
+.method-body .pc .fineprint { margin: 0; font-size: var(--fs-1); line-height: 1.5; color: var(--faint); }

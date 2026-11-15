@@ -59,7 +59,8 @@ test("a lander that runs flat stays lost when the Sun returns", () => {
   const r = simulateMission(s, 0, s.length, STEP_MIN, "tracking", spec);
   assert.equal(r.survives, false);
   assert.equal(r.minSocPct, 0);
-  assert.ok(r.soc.slice(160).every((v) => v === 0), "battery trace must stay at zero after loss");
+  assert.equal(r.soc[159], 0, "the failure step records the empty battery");
+  assert.ok(r.soc.slice(160).every(Number.isNaN), "later charge is unevaluated after loss");
 });
 
 test("vertical panels on four faces give 25-35% of a Sun-tracking panel", () => {
@@ -127,7 +128,67 @@ test("Earth-outage requirement: a mission with no Earth contact fails only when 
   const need = simulateMission(s, 0, s.length, STEP_MIN, "tracking", spec, { maxEarthOutageH: 24 });
   assert.equal(need.survives, false);
   assert.equal(need.failure, "earth");
-  assert.equal(need.earthFailAt, 24.5 * 3600000);
+  assert.equal(need.earthFailAt, 24 * 3600000);
+});
+
+test("Earth and battery failures are ordered within the same half-hour interval", () => {
+  const s = series(30, () => ({ lit: false, sunElev: -1, comm: false }));
+  for (const [batteryHours, failure, earthHours] of [
+    [11.75, "battery", null],
+    [12, "battery", null],
+    [12.25, "earth", 12],
+    [13.25, "earth", 12],
+  ]) {
+    const lander = { ...spec, batteryWh: batteryHours * 100, dod: 1 };
+    const r = simulateMission(s, 0, s.length, STEP_MIN, "tracking", lander, { maxEarthOutageH: 12 });
+    assert.equal(r.failure, failure, `battery lasts ${batteryHours} h`);
+    assert.equal(r.lostAt, batteryHours * 3600000);
+    assert.equal(r.earthFailAt, earthHours === null ? null : earthHours * 3600000);
+    assert.equal(r.longestEarthOutageH, batteryHours);
+  }
+});
+
+test("Earth contact returning exactly at the outage limit keeps the requirement satisfied", () => {
+  const s = series(30, (i) => ({ lit: true, sunElev: 1, comm: i >= 24 }));
+  const req = { maxEarthOutageH: 12 };
+  for (const steps of [24, 30]) {
+    const r = simulateMission(s, 0, steps, STEP_MIN, "tracking", spec, req);
+    assert.equal(r.survives, true);
+    assert.equal(r.earthFailAt, null);
+    assert.equal(r.longestEarthOutageH, 12);
+  }
+});
+
+test("a battery already at or below reserve fails at landing even in sunlight", () => {
+  const s = series(4, () => ({ lit: true, sunElev: 1 }));
+  for (const initialSocPct of [10, 20]) {
+    const r = simulateMission(s, 0, s.length, STEP_MIN, "tracking", spec, { initialSocPct, reservePct: 20 });
+    assert.equal(r.survives, false);
+    assert.equal(r.failure, "battery");
+    assert.equal(r.lostAt, 0);
+    assert.equal(r.minSocPct, initialSocPct);
+    assert.equal(r.soc[0], initialSocPct);
+    assert.ok(r.soc.slice(1).every(Number.isNaN));
+  }
+});
+
+test("reserve-failure CSV records the reserve and leaves subsequent charge cells blank", async () => {
+  const { missionCsv } = await import("../.build/export.js");
+  const s = series(20, () => ({ lit: false, sunElev: -1, comm: true, earthElev: 1 }));
+  const lander = { ...spec, batteryWh: 1000 };
+  const req = { reservePct: 20 };
+  const r = simulateMission(s, 0, s.length, STEP_MIN, "tracking", lander, req);
+  assert.equal(r.lostAt, 6.4 * 3600000);
+  assert.equal(r.minSocPct, 20);
+  assert.equal(r.endSocPct, 20);
+  assert.equal(r.soc[12], 20);
+  assert.ok(r.soc.slice(13).every(Number.isNaN));
+  const site = { id: "test", name: "Test", lat: -89, lon: 0, elevationM: 0, horizonDeg: [] };
+  const csv = missionCsv({ site, samples: s, startIdx: 0, steps: s.length, soc: r.soc, mode: "tracking", spec: lander, heightM: 0, result: r, req, stress: [] });
+  const rows = csv.trimEnd().split("\n").filter((line) => !line.startsWith("#")).slice(1);
+  assert.equal(rows[12].split(",").at(-1), "20.0");
+  assert.ok(rows.slice(13).every((line) => line.endsWith(",")));
+  assert.doesNotMatch(csv, /NaN/);
 });
 
 test("stress test: a marginal plan fails when the battery starts part-charged, and says so", () => {

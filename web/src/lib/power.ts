@@ -65,6 +65,14 @@ export type LanderSpec = {
   heaterW?: number;
 };
 
+/** Supported settings shared by inputs, links and sizing recommendations. Battery values are Wh. */
+export const LANDER_LIMITS = {
+  loadW: { min: 10, max: 2000, step: 10 },
+  heaterW: { min: 0, max: 2000, step: 10 },
+  arrayM2: { min: 0.1, max: 500, step: 0.1 },
+  batteryWh: { min: 100, max: 1_000_000, step: 100 },
+};
+
 /** What the mission must achieve besides keeping power. */
 export type MissionRequirements = {
   /** longest allowed stretch with no part of Earth above the skyline, hours; null = no requirement (autonomous or relay) */
@@ -81,17 +89,17 @@ export type MissionResult = {
   survives: boolean;
   /** which requirement failed first: the battery ran out, or Earth stayed hidden too long */
   failure: "battery" | "earth" | null;
-  /** moment the usable battery reaches zero (interpolated inside the half-hour step), or null */
+  /** moment the usable battery reaches zero or its reserve, or null */
   lostAt: number | null;
   /** moment the Earth outage exceeded the allowed limit, or null */
   earthFailAt: number | null;
   /** lowest usable state of charge reached, % */
   minSocPct: number;
-  /** usable state of charge at the end of the mission, % */
+  /** usable state of charge at the end of evaluation (mission end or battery failure), % */
   endSocPct: number;
-  /** longest stretch with Earth hidden during the mission, hours */
+  /** longest stretch with Earth hidden before evaluation ends, hours */
   longestEarthOutageH: number;
-  /** state of charge at the end of each step across the mission, % */
+  /** charge at each step end, or at failure in the final evaluated step; later steps are NaN */
   soc: Float32Array;
 };
 
@@ -116,9 +124,10 @@ export function simulateMission(
   trace = true
 ): MissionResult {
   const usable = Math.max(1, spec.batteryWh * spec.dod);
-  const stepH = stepMin / 60, stepMs = stepMin * 60000;
+  const stepH = stepMin / 60;
   const end = Math.min(samples.length, startIdx + steps);
   const soc = new Float32Array(trace ? Math.max(0, end - startIdx) : 0);
+  soc.fill(NaN);
   let e = (usable * (req.initialSocPct ?? 100)) / 100;
   let min = e, lostAt: number | null = null, earthFailAt: number | null = null;
   const floor = (usable * (req.reservePct ?? 0)) / 100;
@@ -129,20 +138,28 @@ export function simulateMission(
     const frac = s.sunFrac ?? (s.lit ? 1 : 0);
     const watts = arrayPowerPerM2(s.sunElev, frac, mode, s.sunAz) * spec.arrayM2 - spec.loadW - (frac < HEATER_SUN_FRACTION ? spec.heaterW ?? 0 : 0);
     const next = e + watts * stepH;
-    if (next <= floor) {
-      // interpolate the moment the charge reaches the floor (zero, or the reserve) within this step
-      lostAt = s.t + (watts < 0 ? Math.min(1, Math.max(0, e - floor) / (-watts * stepH)) : 1) * stepMs;
-      e = floor; min = floor;
+    const batteryFails = e <= floor || next <= floor;
+    // Evaluate both requirements over the same interval, including a partial step before loss.
+    let elapsedH = stepH;
+    if (e <= floor) elapsedH = 0;
+    else if (batteryFails) elapsedH = (e - floor) / -watts;
+    if (s.comm === false) {
+      if (maxOut !== null && earthFailAt === null && outage + elapsedH > maxOut) {
+        earthFailAt = s.t + Math.max(0, maxOut - outage) * 3600000;
+      }
+      outage += elapsedH;
+      if (outage > longestOutage) longestOutage = outage;
+    } else outage = 0;
+    if (batteryFails) {
+      lostAt = s.t + elapsedH * 3600000;
+      e = Math.min(e, floor);
+      min = Math.min(min, e);
+      if (trace) soc[i - startIdx] = (100 * e) / usable;
       break;
     }
     e = Math.min(usable, next);
     if (e < min) min = e;
     if (trace) soc[i - startIdx] = (100 * e) / usable;
-    if (s.comm === false) {
-      outage += stepH;
-      if (outage > longestOutage) longestOutage = outage;
-      if (maxOut !== null && earthFailAt === null && outage > maxOut) earthFailAt = s.t + stepMs;
-    } else outage = 0;
   }
   const complete = end - startIdx >= steps;
   const failure: MissionResult["failure"] =
@@ -185,8 +202,8 @@ export function porkchopRow(
 }
 
 /** Steps the app's inputs move in, so a recommendation is always a value the user can type. */
-export const BATTERY_STEP_WH = 100;
-export const ARRAY_STEP_M2 = 0.1;
+export const BATTERY_STEP_WH = LANDER_LIMITS.batteryWh.step;
+export const ARRAY_STEP_M2 = LANDER_LIMITS.arrayM2.step;
 
 /**
  * Two separate fixes for this exact landing, each keeping every other setting as it is:
@@ -224,8 +241,8 @@ export function sizeToSurvive(
   };
   const bat = (v: number) => ({ ...spec, batteryWh: v });
   const arr = (v: number) => ({ ...spec, arrayM2: v });
-  const tb = search(10, 1_000_000, bat);
-  const ta = search(0.01, 500, arr);
+  const tb = search(LANDER_LIMITS.batteryWh.min, LANDER_LIMITS.batteryWh.max, bat);
+  const ta = search(LANDER_LIMITS.arrayM2.min, LANDER_LIMITS.arrayM2.max, arr);
   return {
     thresholdBatteryWh: tb,
     thresholdArrayM2: ta,
@@ -348,8 +365,8 @@ export function robustOptions(
   };
   return {
     landIdx,
-    batteryWh: size(10, 1_000_000, BATTERY_STEP_WH, (v) => ({ ...spec, batteryWh: v })),
-    arrayM2: size(0.01, 500, ARRAY_STEP_M2, (v) => ({ ...spec, arrayM2: v })),
+    batteryWh: size(LANDER_LIMITS.batteryWh.min, LANDER_LIMITS.batteryWh.max, BATTERY_STEP_WH, (v) => ({ ...spec, batteryWh: v })),
+    arrayM2: size(LANDER_LIMITS.arrayM2.min, LANDER_LIMITS.arrayM2.max, ARRAY_STEP_M2, (v) => ({ ...spec, arrayM2: v })),
   };
 }
 

@@ -258,7 +258,7 @@ fs.writeFileSync(path.join(ROOT, "web/public/terrain/wac-movie.bin"), cells);
 fs.writeFileSync(path.join(ROOT, "web/public/terrain/wac-movie.json"), JSON.stringify({
   side, stepKm: meta.grid.stepM / 1000, frames: meta.frames.map((f, i) => ({ t: new Date(tFrame[i]).toISOString().slice(0, 16) + "Z", name: f.name })),
   encoding: "uint8 per cell, row 0 = toward 0 E: 255 outside the 24 km circle; low bits 0 outside the photo strip, 1 photo dark, 2 photo bright; +4 when SUNLOCK predicts sunlight (half the disc above the skyline)",
-  summary: { agreePct: result.stateAgreement.halfDisc.agreePct, n: result.stateAgreement.halfDisc.n, medianAbsErrorH: result.timing.halfDisc.medianAbsErrorH, transitions: result.timing.halfDisc.matched, within2hPct: result.timing.halfDisc.within2hPct, survival7dAgreePct: result.survival.halfDisc["7d"].agreePct, survival7dMissions: result.survival.halfDisc["7d"].missions },
+  summary: { alwaysDarkWouldAgreePct: result.stateAgreement.halfDisc.alwaysDarkWouldAgreePct, photographedTransitions: result.timing.halfDisc.photographed, whenWeSaySurvivesPhotosAgreePct: result.survival.halfDisc["7d"].whenWeSaySurvivesPhotosAgreePct, agreePct: result.stateAgreement.halfDisc.agreePct, n: result.stateAgreement.halfDisc.n, medianAbsErrorH: result.timing.halfDisc.medianAbsErrorH, transitions: result.timing.halfDisc.matched, within2hPct: result.timing.halfDisc.within2hPct, survival7dAgreePct: result.survival.halfDisc["7d"].agreePct, survival7dMissions: result.survival.halfDisc["7d"].missions },
 }) + "\n");
 const { photoBrightBySunClearance, ...rest } = result;
 console.log(JSON.stringify(rest, null, 1));

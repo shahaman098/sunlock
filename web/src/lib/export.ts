@@ -38,6 +38,7 @@ export function missionCsv(o: {
     }`,
     `# model,Sun and Earth from Astronomy Engine in the IAU 2015 lunar frame (Earth seen from the surface); sunlit = any part of the solar disc above the skyline; panel power uses the visible share of the disc; heaters run while less than half the disc is up; first-order energy model, not a flight analysis`,
     `# timestamps,start of each 30-minute step; battery_pct is at the end of the step`,
+    `# battery trace,the failure step records charge at the failure time; later unevaluated charge cells are blank`,
     `time_utc,sun_elev_deg,sunlit,sun_visible_fraction,earth_elev_deg,earth_in_view,panel_power_w,battery_pct_of_usable`,
   ];
   const rows: string[] = [];
@@ -48,7 +49,7 @@ export function missionCsv(o: {
     rows.push([
       new Date(s.t).toISOString().slice(0, 16) + "Z",
       s.sunElev.toFixed(3), s.lit ? 1 : 0, (s.sunFrac ?? (s.lit ? 1 : 0)).toFixed(3), s.earthElev.toFixed(3), s.comm ? 1 : 0,
-      p.toFixed(1), o.soc[i - o.startIdx].toFixed(1),
+      p.toFixed(1), Number.isFinite(o.soc[i - o.startIdx]) ? o.soc[i - o.startIdx].toFixed(1) : "",
     ].join(","));
   }
   return [...head, ...rows].join("\n") + "\n";

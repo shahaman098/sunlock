@@ -7,12 +7,15 @@ import Porkchop from "./components/Porkchop";
 const Terrain3D = lazy(() => import("./components/Terrain3D"));
 const Globe3D = lazy(() => import("./components/Globe3D"));
 import Explore from "./components/Explore";
+const PhotoCheck = lazy(() => import("./components/PhotoCheck"));
 import type { GlobeApi } from "./components/Globe3D";
 import { classify, loadFinder, type Finder, type FinderLimits } from "./lib/finder";
 import { buildShadowField, loadTerrain, computeShadow, customHorizon, unprojectFromUnit, type ElevationGrid, type ShadowField, type TerrainMeta } from "./lib/terrain";
 import { buildSkies, commWindows, raisedTerrain, siteSeries, statsFor, upcomingWindows } from "./lib/analysis";
 import { skyAt, readSite, siteBasis, lookAngles, type Site } from "./lib/selene";
 import { missionCsv } from "./lib/export";
+import { readLanderParams } from "./lib/inputs";
+import { LANDER_LIMITS } from "./lib/power";
 import { arrayPowerPerM2, batteryWh, energyWh, fmtEnergy, fmtPower, simulateMission, porkchopRow, sizeToSurvive, stressTest, limitingCase, robustOptions, allCasesPass, earliestSurvivable, type ArrayMode, type LanderSpec, type MissionResult, type MissionRequirements, type StressCase, type TerrainCase } from "./lib/power";
 
 const STEP_MIN = 30;
@@ -65,7 +68,21 @@ const HEIGHT_CHOICES = [0, 2, 10];
  * #site=mons-mouton&land=2027-02-03T06:00Z&days=14&load=100&array=4&battery=10
  * Anything missing or malformed falls back to the defaults.
  */
-function readHash() {
+type SharedView = Partial<ReturnType<typeof readLanderParams> & {
+  site: string;
+  near: string;
+  lat: number;
+  lon: number;
+  landMs: number;
+  days: number;
+  height: number;
+  outage: number;
+  reserve: number;
+  panels: ArrayMode;
+  view: "explore" | "console";
+}>;
+
+function readHash(): SharedView {
   try {
     const p = new URLSearchParams(window.location.hash.replace(/^#/, ""));
     const num = (k: string, lo: number, hi: number) => {
@@ -85,13 +102,10 @@ function readHash() {
         : undefined,
       days: days !== undefined && MISSION_CHOICES.includes(days) ? days : undefined,
       height: height !== undefined && HEIGHT_CHOICES.includes(height) ? height : undefined,
-      load: num("load", 10, 2000),
-      heater: num("heater", 0, 2000),
+      ...readLanderParams(p),
       outage: num("outage", 1, 240),
       reserve: num("reserve", 0, 50),
       panels: (["tracking", "vertical", "horizontal"] as const).find((m) => m === p.get("panels")),
-      array: num("array", 0.5, 50),
-      battery: num("battery", 1, 200),
       // a link without a view is one made in the console (before the 3D way in existed); a bare address opens in 3D
       view: p.get("view") === "3d" ? ("explore" as const) : p.get("view") === "console" || [...p.keys()].length ? ("console" as const) : ("explore" as const),
     };
@@ -99,7 +113,7 @@ function readHash() {
     return {};
   }
 }
-const INITIAL: Partial<ReturnType<typeof readHash>> = readHash();
+const INITIAL = readHash();
 
 type NearbySpot = { km: number; dir: string; lat: number; lon: number; elevationM: number; horizonDeg: number[] };
 
@@ -963,7 +977,7 @@ export default function App() {
                   ))}
                 </select>
               </label>
-              <NumIn label="Heaters in the dark" unit="W" value={lander.heaterW ?? 0} min={0} max={2000} step={10}
+              <NumIn label="Heaters in the dark" unit="W" value={lander.heaterW ?? 0} {...LANDER_LIMITS.heaterW}
                 onChange={(v) => setLander({ ...lander, heaterW: v })} />
             </div>
             <label className="field field-req">
@@ -1005,11 +1019,11 @@ export default function App() {
               )}
             </div>
             <div className="lander-inputs">
-              <NumIn label="Power use" unit="W" value={lander.loadW} min={10} max={2000} step={10}
+              <NumIn label="Power use" unit="W" value={lander.loadW} {...LANDER_LIMITS.loadW}
                 onChange={(v) => setLander({ ...lander, loadW: v })} />
-              <NumIn label="Panel size" unit="m²" value={lander.arrayM2} min={0.1} max={500} step={0.1}
+              <NumIn label="Panel size" unit="m²" value={lander.arrayM2} {...LANDER_LIMITS.arrayM2}
                 onChange={(v) => setLander({ ...lander, arrayM2: v })} />
-              <NumIn label="Battery" unit="kWh" value={+(lander.batteryWh / 1000).toFixed(1)} min={0.1} max={1000} step={0.1}
+              <NumIn label="Battery" unit="kWh" value={+(lander.batteryWh / 1000).toFixed(1)} min={LANDER_LIMITS.batteryWh.min / 1000} max={LANDER_LIMITS.batteryWh.max / 1000} step={LANDER_LIMITS.batteryWh.step / 1000}
                 onChange={(v) => setLander({ ...lander, batteryWh: v * 1000 })} />
             </div>
             </div>
@@ -1788,6 +1802,7 @@ export default function App() {
                 </ul>
               </div>
             )}
+            <Suspense fallback={null}><PhotoCheck /></Suspense>
             <p className="fineprint">
               Data provenance: every map, site and validation file here is rebuilt from pinned NASA products (LOLA terrain, the
               LOLA team's illumination maps, LROC WAC) by one command, <code>npm run data</code>; the SHA-256 of each NASA input
@@ -2358,16 +2373,21 @@ function NumIn({ label, unit, value, min, max, step, onChange }: {
 function SocSpark({ soc, lostFrac, startMs, days }: { soc: Float32Array; lostFrac: number | null; startMs: number; days: number }) {
   const W = 300, H = 44;
   const n = soc.length;
-  const end = lostFrac !== null ? Math.min(n, Math.max(1, Math.round(lostFrac * n) + 1)) : n;
+  const firstUnknown = soc.findIndex((value) => !Number.isFinite(value));
+  const end = firstUnknown < 0 ? n : firstUnknown;
   const pts: string[] = [];
   const stride = Math.max(1, Math.floor(n / 150));
-  for (let i = 0; i < end; i += stride) pts.push(`${((i / (n - 1)) * W).toFixed(1)},${(H - (soc[i] / 100) * H).toFixed(1)}`);
-  if ((end - 1) % stride) pts.push(`${(((end - 1) / (n - 1)) * W).toFixed(1)},${(H - (soc[end - 1] / 100) * H).toFixed(1)}`);
   const lostX = lostFrac !== null ? Math.min(W, Math.max(0, lostFrac * W)) : null;
+  const point = (i: number) => {
+    const x = i === end - 1 && lostX !== null ? lostX : ((i + 1) / n) * W;
+    return `${x.toFixed(1)},${(H - (soc[i] / 100) * H).toFixed(1)}`;
+  };
+  for (let i = 0; i < end; i += stride) pts.push(point(i));
+  if (end > 0 && (end - 1) % stride) pts.push(point(end - 1));
   return (
     <figure className="soc-wrap">
       <svg className="soc" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img"
-           aria-label={lostX !== null ? "Battery charge across the mission, falling to empty" : "Battery charge across the mission"}>
+           aria-label={lostX !== null ? "Battery charge until its limit is reached" : "Battery charge across the mission"}>
         <line x1="0" y1={H} x2={W} y2={H} className="soc-zero" />
         <polyline points={pts.join(" ")} className="soc-line" />
         {lostX !== null && <line x1={lostX} x2={lostX} y1="0" y2={H} className="soc-lost" />}
