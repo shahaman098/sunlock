@@ -1093,7 +1093,7 @@
    Same tokens as the console; panels are translucent so the scene stays the subject.
    ===================================================================== */
 .console.is-explore { min-height: 0; padding: 0; gap: 0; display: block; }
-.ex { position: fixed; inset: 0; z-index: 40; background: #000; overflow: hidden; --ex-time-h: 124px; }
+.ex { position: fixed; inset: 0; z-index: 40; background: #000; overflow: hidden; --ex-time-h: 136px; }
 .ex-scene { position: absolute; inset: 0; }
 .ex-scene.is-surface { top: var(--top-h); bottom: var(--ex-time-h); right: 336px; left: 240px; border: 1px solid var(--hair); }
 .ex-scene .t3d-msg { z-index: 0; }
@@ -1201,6 +1201,34 @@
 .ex-ribbon-key i { display: inline-block; width: 10px; height: 6px; }
 .ex-ribbon-key .k-sun { background: var(--sun); }
 .ex-ribbon-key .k-comm { background: var(--comm); margin-left: 6px; }
+
+.ex-date em { margin-top: 2px; font-family: var(--mono); font-style: normal; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--faint); }
+.ex-date em.is-on { color: var(--ok); }
+
+/* ---- arriving: the scene first, then the panels come in around it */
+.ex-intro {
+  position: absolute; z-index: 1; left: 0; right: 0; top: 38%; margin: 0; display: flex; flex-direction: column; align-items: center; gap: 6px;
+  pointer-events: none; opacity: 0; animation: ex-title 2.6s ease both;
+}
+.ex-intro span { font-family: var(--mono); font-size: var(--fs-1); letter-spacing: 0.5em; text-transform: uppercase; color: var(--muted); }
+.ex-intro b { font-family: var(--sans); font-size: 34px; font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase; color: var(--ink); text-shadow: 0 0 24px #000; }
+@keyframes ex-title { 0% { opacity: 0; letter-spacing: 0.1em; } 18% { opacity: 1; } 62% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes ex-in-down { from { opacity: 0; transform: translateY(-14px); } }
+@keyframes ex-in-up { from { opacity: 0; transform: translateY(18px); } }
+@keyframes ex-in-left { from { opacity: 0; transform: translateX(-22px); } }
+@keyframes ex-in-right { from { opacity: 0; transform: translateX(22px); } }
+.ex-scene { animation: ex-fade 1.2s ease both; }
+@keyframes ex-fade { from { opacity: 0; } }
+.ex-top { animation: ex-in-down 0.7s 0.3s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+.ex-time { animation: ex-in-up 0.8s 3s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+.ex-sites { animation: ex-in-left 0.8s 3.3s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+.ex-card { animation: ex-in-right 0.8s 3.5s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+.ex-cam { animation: ex-in-up 0.8s 3.7s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+.ex-verdict strong { transition: color 0.3s ease; }
+@media (prefers-reduced-motion: reduce) {
+  .ex-intro { display: none; }
+  .ex-scene, .ex-top, .ex-time, .ex-sites, .ex-card, .ex-cam { animation: none; }
+}
 
 @media (max-width: 899px) {
   .ex-sites { display: none; }

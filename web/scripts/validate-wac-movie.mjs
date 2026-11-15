@@ -207,7 +207,8 @@ function survival(off) {
       }
     }
     out[`${days}d`] = {
-      missions: n, skippedForPhotoGaps: skipped, agreePct: +((100 * (both + neither)) / n).toFixed(1),
+      missions: n, skippedForPhotoGaps: skipped, agreePct: n ? +((100 * (both + neither)) / n).toFixed(1) : null,
+      alwaysFailWouldAgreePct: n ? +((100 * (neither + weOnly)) / n).toFixed(1) : null,
       bothSurvive: both, bothFail: neither, weSayNoPhotosSayYes: photoOnly, weSaySurvivesPhotosSayNo: weOnly,
       whenWeSaySurvivesPhotosAgreePct: both + weOnly ? +((100 * both) / (both + weOnly)).toFixed(1) : null,
     };
@@ -236,6 +237,7 @@ const result = {
     "One month (December 2009), within 24 km of the pole: southern summer, when the Sun is highest there.",
     "A photo pixel is 100 m and reads dark on a slope facing away from a grazing Sun even when the Sun is above the skyline; our prediction is skyline-only.",
     "Frames are about 2 hours apart, so a transition is only known to within that bracket.",
+    "The month has no 14-day run of photographs without a gap over 6 hours (the longest is 12.9 days, 17-30 December), so only 7-day stays could be tested; 14-day survival is untested here.",
     "Survival compares two light sequences through the same power model; it tests the shadow timing that feeds the model, not the power model itself.",
   ],
 };
@@ -256,7 +258,7 @@ fs.writeFileSync(path.join(ROOT, "web/public/terrain/wac-movie.bin"), cells);
 fs.writeFileSync(path.join(ROOT, "web/public/terrain/wac-movie.json"), JSON.stringify({
   side, stepKm: meta.grid.stepM / 1000, frames: meta.frames.map((f, i) => ({ t: new Date(tFrame[i]).toISOString().slice(0, 16) + "Z", name: f.name })),
   encoding: "uint8 per cell, row 0 = toward 0 E: 255 outside the 24 km circle; low bits 0 outside the photo strip, 1 photo dark, 2 photo bright; +4 when SUNLOCK predicts sunlight (half the disc above the skyline)",
-  summary: { agreePct: result.stateAgreement.halfDisc.agreePct, n: result.stateAgreement.halfDisc.n, medianAbsErrorH: result.timing.halfDisc.medianAbsErrorH, transitions: result.timing.halfDisc.matched, within2hPct: result.timing.halfDisc.within2hPct, survival14dAgreePct: result.survival.halfDisc["14d"].agreePct, survival14dMissions: result.survival.halfDisc["14d"].missions },
+  summary: { agreePct: result.stateAgreement.halfDisc.agreePct, n: result.stateAgreement.halfDisc.n, medianAbsErrorH: result.timing.halfDisc.medianAbsErrorH, transitions: result.timing.halfDisc.matched, within2hPct: result.timing.halfDisc.within2hPct, survival7dAgreePct: result.survival.halfDisc["7d"].agreePct, survival7dMissions: result.survival.halfDisc["7d"].missions },
 }) + "\n");
 const { photoBrightBySunClearance, ...rest } = result;
 console.log(JSON.stringify(rest, null, 1));

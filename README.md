@@ -28,6 +28,9 @@ several candidate regions across a season is an afternoon of work per question.
 
 ## What it does
 
+- **Opens on the Moon in 3D.** The whole Moon, lit by the Sun from its true direction for the
+  chosen date, with the landing sites, the answer for the selected one and a clock. "Mission
+  console" opens the detailed view below with the same site, date and lander.
 - **Terrain-driven shadow map.** Scrub time and the shadow pattern across the entire pole is
   recomputed from the elevation model, not played back from a texture.
 - **Nine candidate regions**, each optimised to its best local high ground within the region.
@@ -109,6 +112,22 @@ magnitude below the 80 m terrain resolution. Output is committed at
   between. On the pre-registered random sample (296 points inside its 88–90°S coverage), our
   sunlight over the same year gives **r = 0.980, RMSE 3.1 points, bias +1.6** (threshold r ≥ 0.85).
   See `research/validation/result-wac.json`.
+- **Shadow timing checked against timestamped photographs (exploratory, not pre-registered).**
+  The tests above compare long-run averages; this one asks *when* shadows arrive. LROC's
+  `WAC_POLE_MOVIE_SOUTH` gives one photograph of the pole per orbit. We sampled all 261 frames of
+  December 2009 on a fixed 1 km grid within 24 km of the pole (1,793 points, 467,973 samples).
+  - Bright or dark at the photographed minute: we agree on **96.6%** of samples. Most samples are
+    dark, so "always dark" would score 81.2%; the overlap of the bright class alone is IoU 0.84.
+  - Of 1,802 photographed sunrises and sunsets, 1,519 have a matching one of ours within a day;
+    for those the **median timing error is 0.5 h** (frames are 1.9 h apart), 70% are within 2 h
+    and 10% are off by more than 11.7 h. **283 (16%) have no crossing of ours within 24 h.**
+  - 7-day missions run on the photographed light and on ours agree **95.9%** of the time
+    ("always fails" would score 82%). When we say a lander survives, the photographs agree
+    **82.7%** of the time. 14-day stays could not be tested: the month has no 14-day run of
+    photographs without a gap.
+  - These use "half the Sun's disc above the skyline" as lit; the app's "any part of the disc"
+    rule scores 95.4% and a 3.3 h median timing error against photo brightness.
+  See `research/validation/result-wac-movie.json`; rerun with `npm run validate:wac-movie`.
 - **73% illumination** at the peak near Shackleton over 180 days. This is a region centre,
   not a searched optimum, which is why it sits below the ~85–88% published for optimised
   clusters.
@@ -143,7 +162,9 @@ npm run data -- --check            # exit 1 if any shipped file is stale or was 
 ```
 
 The pipeline (`web/scripts/pipeline.mjs`) runs, in order: terrain grids, validation against the
-LOLA maps (pre-registered H1, H2, H4), validation against LROC WAC (H3), site selection, nearby
+LOLA maps (pre-registered H1, H2, H4), validation against LROC WAC (H3), shadow timing against
+LROC's timestamped photographs (from committed samples; `npm run fetch:wac-movie` re-downloads
+them, about 3 GB of range requests), site selection, nearby
 positions, the site finder, mission markers and the nearby-position validation. It writes
 [`web/public/terrain/manifest.json`](web/public/terrain/manifest.json): for every output, its
 SHA-256, the stage that made it and the hash of every input and script that went into it. A test

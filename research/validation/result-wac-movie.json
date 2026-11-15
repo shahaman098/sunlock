@@ -1,0 +1,224 @@
+{
+ "what": "shadow timing and mission survival against LROC's timestamped photographs of the south pole",
+ "reference": "LROC WAC_POLE_MOVIE_SOUTH (LRO-L-LROC-5-RDR-V1.0, LROLRC_2001), I/F, 100 m/px",
+ "frames": {
+  "n": 261,
+  "first": "2009-12-03T09:44:15.000Z",
+  "last": "2009-12-31T23:54:33.000Z",
+  "medianGapH": 1.89
+ },
+ "grid": {
+  "points": 1793,
+  "stepKm": 1,
+  "radiusKm": 24
+ },
+ "photoBright": {
+  "rule": "I/F above the Otsu threshold of all sampled values (from the photographs alone)",
+  "thresholdIF": 0.00734
+ },
+ "registration": {
+  "what": "r between each point's photographed bright share and NASA's LOLA 18.6-year sunlight, per axis orientation",
+  "x+y+": 0.872,
+  "x-y+": 0.015,
+  "x+y-": -0.398,
+  "x-y-": 0.035
+ },
+ "stateAgreement": {
+  "halfDisc": {
+   "n": 467973,
+   "agreePct": 96.59,
+   "alwaysDarkWouldAgreePct": 81.15,
+   "brightOverlapIoU": 0.842,
+   "bothBright": 85109,
+   "bothDark": 366911,
+   "weBrightPhotoDark": 12869,
+   "weDarkPhotoBright": 3084
+  },
+  "anyPartOfDisc": {
+   "n": 467973,
+   "agreePct": 95.42,
+   "alwaysDarkWouldAgreePct": 81.15,
+   "brightOverlapIoU": 0.803,
+   "bothBright": 87236,
+   "bothDark": 359285,
+   "weBrightPhotoDark": 20495,
+   "weDarkPhotoBright": 957
+  },
+  "halfDiscAtHalfThreshold": {
+   "n": 467973,
+   "agreePct": 97.53,
+   "alwaysDarkWouldAgreePct": 78.5,
+   "brightOverlapIoU": 0.89,
+   "bothBright": 93517,
+   "bothDark": 362884,
+   "weBrightPhotoDark": 4461,
+   "weDarkPhotoBright": 7111
+  },
+  "halfDiscAtDoubleThreshold": {
+   "n": 467973,
+   "agreePct": 92.81,
+   "alwaysDarkWouldAgreePct": 85.83,
+   "brightOverlapIoU": 0.66,
+   "bothBright": 65315,
+   "bothDark": 369018,
+   "weBrightPhotoDark": 32663,
+   "weDarkPhotoBright": 977
+  }
+ },
+ "photoBrightBySunClearance": [
+  {
+   "sunCentreAboveSkylineDeg": "-90 to -2",
+   "n": 313294,
+   "photoBrightPct": 0.1
+  },
+  {
+   "sunCentreAboveSkylineDeg": "-2 to -1",
+   "n": 25718,
+   "photoBrightPct": 0.8
+  },
+  {
+   "sunCentreAboveSkylineDeg": "-1 to -0.5",
+   "n": 13772,
+   "photoBrightPct": 1.8
+  },
+  {
+   "sunCentreAboveSkylineDeg": "-0.5 to -0.266",
+   "n": 7458,
+   "photoBrightPct": 2.7
+  },
+  {
+   "sunCentreAboveSkylineDeg": "-0.266 to 0",
+   "n": 9753,
+   "photoBrightPct": 21.8
+  },
+  {
+   "sunCentreAboveSkylineDeg": "0 to 0.266",
+   "n": 10583,
+   "photoBrightPct": 64.9
+  },
+  {
+   "sunCentreAboveSkylineDeg": "0.266 to 0.5",
+   "n": 9886,
+   "photoBrightPct": 76.7
+  },
+  {
+   "sunCentreAboveSkylineDeg": "0.5 to 1",
+   "n": 18740,
+   "photoBrightPct": 82.4
+  },
+  {
+   "sunCentreAboveSkylineDeg": "1 to 2",
+   "n": 29121,
+   "photoBrightPct": 90.7
+  },
+  {
+   "sunCentreAboveSkylineDeg": "2 to 90",
+   "n": 29648,
+   "photoBrightPct": 97.2
+  }
+ ],
+ "timing": {
+  "halfDisc": {
+   "photographed": 1802,
+   "matched": 1519,
+   "noCrossingOfOursWithin24h": 283,
+   "medianBracketH": 1.88,
+   "insideBracketPct": 35.9,
+   "within2hPct": 70.1,
+   "within6hPct": 80.9,
+   "medianAbsErrorH": 0.5,
+   "p90AbsErrorH": 11.7,
+   "sunrise": {
+    "n": 825,
+    "medianSignedH": 0,
+    "medianAbsH": 0.71
+   },
+   "sunset": {
+    "n": 694,
+    "medianSignedH": 0,
+    "medianAbsH": 0.29
+   },
+   "signNote": "negative = our crossing is earlier than the photographs allow, positive = later"
+  },
+  "anyPartOfDisc": {
+   "photographed": 1802,
+   "matched": 1200,
+   "noCrossingOfOursWithin24h": 602,
+   "medianBracketH": 1.88,
+   "insideBracketPct": 9,
+   "within2hPct": 38.9,
+   "within6hPct": 65.2,
+   "medianAbsErrorH": 3.28,
+   "p90AbsErrorH": 14.73,
+   "sunrise": {
+    "n": 674,
+    "medianSignedH": -2.92,
+    "medianAbsH": 3.58
+   },
+   "sunset": {
+    "n": 526,
+    "medianSignedH": 2.31,
+    "medianAbsH": 2.85
+   },
+   "signNote": "negative = our crossing is earlier than the photographs allow, positive = later"
+  }
+ },
+ "survival": {
+  "what": "default lander (100 W, 4 m2 Sun-facing panels, 10 kWh), landing every 6 h, light held between frames",
+  "halfDisc": {
+   "7d": {
+    "missions": 50204,
+    "skippedForPhotoGaps": 103994,
+    "agreePct": 95.9,
+    "alwaysFailWouldAgreePct": 82,
+    "bothSurvive": 8801,
+    "bothFail": 39342,
+    "weSayNoPhotosSayYes": 222,
+    "weSaySurvivesPhotosSayNo": 1839,
+    "whenWeSaySurvivesPhotosAgreePct": 82.7
+   },
+   "14d": {
+    "missions": 0,
+    "skippedForPhotoGaps": 103994,
+    "agreePct": null,
+    "alwaysFailWouldAgreePct": null,
+    "bothSurvive": 0,
+    "bothFail": 0,
+    "weSayNoPhotosSayYes": 0,
+    "weSaySurvivesPhotosSayNo": 0,
+    "whenWeSaySurvivesPhotosAgreePct": null
+   }
+  },
+  "anyPartOfDisc": {
+   "7d": {
+    "missions": 50204,
+    "skippedForPhotoGaps": 103994,
+    "agreePct": 94.7,
+    "alwaysFailWouldAgreePct": 82,
+    "bothSurvive": 8906,
+    "bothFail": 38643,
+    "weSayNoPhotosSayYes": 117,
+    "weSaySurvivesPhotosSayNo": 2538,
+    "whenWeSaySurvivesPhotosAgreePct": 77.8
+   },
+   "14d": {
+    "missions": 0,
+    "skippedForPhotoGaps": 103994,
+    "agreePct": null,
+    "alwaysFailWouldAgreePct": null,
+    "bothSurvive": 0,
+    "bothFail": 0,
+    "weSayNoPhotosSayYes": 0,
+    "weSaySurvivesPhotosSayNo": 0,
+    "whenWeSaySurvivesPhotosAgreePct": null
+   }
+  }
+ },
+ "limits": [
+  "One month (December 2009), within 24 km of the pole: southern summer, when the Sun is highest there.",
+  "A photo pixel is 100 m and reads dark on a slope facing away from a grazing Sun even when the Sun is above the skyline; our prediction is skyline-only.",
+  "Frames are about 2 hours apart, so a transition is only known to within that bracket.",
+  "The month has no 14-day run of photographs without a gap over 6 hours (the longest is 12.9 days, 17-30 December), so only 7-day stays could be tested; 14-day survival is untested here.",
+  "Survival compares two light sequences through the same power model; it tests the shadow timing that feeds the model, not the power model itself."
+ ]
+}

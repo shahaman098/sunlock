@@ -4,7 +4,7 @@ import { TrackballControls } from "three/examples/jsm/controls/TrackballControls
 import type { Sky, Vec } from "../lib/selene";
 import { projectToUnit, type ShadowField, type ShadowView } from "../lib/terrain";
 
-export type GlobeSite = { id: string; name: string; lat: number; lon: number; lit: boolean; kind: "nasa" | "mission" | "custom" };
+export type GlobeSite = { id: string; name: string; lat: number; lon: number; lit: boolean; kind: "nasa" | "mission" | "custom"; /** named only when selected: keeps the pole's cluster readable */ minor?: boolean };
 
 type Props = {
   sites: GlobeSite[];
@@ -79,6 +79,7 @@ function label(text: string, color = "#e8e8e8", size = 0.021) {
 export default function Globe3D({ sites, selectedId, sky, dateLabel, hillshade, field, shadow, onSelect, immersive = false, insetRight = 0, insetBottom = 0, apiRef }: Props) {
   const insetRef = useRef(insetRight);
   insetRef.current = insetRight;
+  const arrived = useRef(false);
   const insetYRef = useRef(0);
   insetYRef.current = insetBottom;
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -86,7 +87,7 @@ export default function Globe3D({ sites, selectedId, sky, dateLabel, hillshade, 
     renderer: THREE.WebGLRenderer; scene: THREE.Scene; camera: THREE.PerspectiveCamera; controls: TrackballControls;
     sun: THREE.DirectionalLight; sunSprite: THREE.Sprite; sunLabel: THREE.Sprite; sunLine: THREE.Line;
     earth: THREE.Mesh; earthLabel: THREE.Sprite; earthLine: THREE.Line;
-    markers: THREE.Group; capTex: THREE.CanvasTexture; flyTo: (dir: THREE.Vector3, dist: number, northUp?: boolean) => void; fit: () => void;
+    markers: THREE.Group; capTex: THREE.CanvasTexture; flyTo: (dir: THREE.Vector3, dist: number, northUp?: boolean, dur?: number) => void; fit: () => void;
   } | null>(null);
   const [failed, setFailed] = useState(false);
   const [hover, setHover] = useState<{ x: number; y: number; text: string } | null>(null);
@@ -112,7 +113,7 @@ export default function Globe3D({ sites, selectedId, sky, dateLabel, hillshade, 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x000000);
     const camera = new THREE.PerspectiveCamera(38, 1, 0.01, 400);
-    camera.position.copy(onSphere(-62, 25, immersive ? 7.5 : 3.4)); // full-screen: arrive from far out
+    camera.position.copy(onSphere(-62, 25, 3.4));
     camera.up.copy(onSphere(0, 0));
 
     const controls = new TrackballControls(camera, renderer.domElement);
@@ -121,20 +122,32 @@ export default function Globe3D({ sites, selectedId, sky, dateLabel, hillshade, 
     controls.zoomSpeed = 0.9;
     controls.dynamicDampingFactor = 0.12;
     controls.minDistance = 1.06;
-    controls.maxDistance = 9;
+    controls.maxDistance = immersive ? 14 : 9;
 
     // stars
     {
-      const n = 1400, pos = new Float32Array(n * 3);
       let seed = 7;
       const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-      for (let i = 0; i < n; i++) {
-        const z = 2 * rnd() - 1, a = 2 * Math.PI * rnd(), r = Math.sqrt(1 - z * z);
-        pos.set([200 * r * Math.cos(a), 200 * z, 200 * r * Math.sin(a)], i * 3);
-      }
-      const g = new THREE.BufferGeometry();
-      g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-      scene.add(new THREE.Points(g, new THREE.PointsMaterial({ color: 0xffffff, size: 1.3, sizeAttenuation: false, transparent: true, opacity: 0.7 })));
+      const gauss = () => (rnd() + rnd() + rnd() + rnd() - 2) / 2;
+      /** a layer of stars; `band` > 0 gathers them toward a tilted great circle, as a hint of the Milky Way (decorative, not a star catalogue) */
+      const layer = (n: number, size: number, opacity: number, band = 0) => {
+        const pos = new Float32Array(n * 3), col = new Float32Array(n * 3);
+        const tilt = new THREE.Euler(1.05, 0.4, 0.3);
+        for (let i = 0; i < n; i++) {
+          const a = 2 * Math.PI * rnd(), z = band ? Math.sin(gauss() * band) : 2 * rnd() - 1, r = Math.sqrt(1 - z * z);
+          const v = new THREE.Vector3(r * Math.cos(a), z, r * Math.sin(a));
+          if (band) v.applyEuler(tilt);
+          pos.set([200 * v.x, 200 * v.y, 200 * v.z], i * 3);
+          const warm = rnd(), b = 0.55 + 0.45 * rnd(); // from blue-white to pale yellow, varied brightness
+          col.set([b * (0.82 + 0.18 * warm), b * 0.9, b * (1 - 0.22 * warm)], i * 3);
+        }
+        const g = new THREE.BufferGeometry();
+        g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+        g.setAttribute("color", new THREE.BufferAttribute(col, 3));
+        scene.add(new THREE.Points(g, new THREE.PointsMaterial({ size, sizeAttenuation: false, transparent: true, opacity, vertexColors: true, depthWrite: false })));
+      };
+      layer(immersive ? 2600 : 1400, 1.2, 0.75);
+      if (immersive) { layer(260, 2.1, 0.95); layer(5200, 1, 0.34, 0.42); }
     }
 
     // the Moon
@@ -146,7 +159,7 @@ export default function Globe3D({ sites, selectedId, sky, dateLabel, hillshade, 
     scene.add(moon);
 
     const capCanvas = document.createElement("canvas");
-    capCanvas.width = capCanvas.height = 1024;
+    capCanvas.width = capCanvas.height = 2048; // the relief image's own size
     const capTex = new THREE.CanvasTexture(capCanvas);
     capTex.colorSpace = THREE.SRGBColorSpace;
     capTex.anisotropy = renderer.capabilities.getMaxAnisotropy();
@@ -205,9 +218,13 @@ export default function Globe3D({ sites, selectedId, sky, dateLabel, hillshade, 
     scene.add(markers);
 
     // ---- camera flights
-    let flight: { from: THREE.Vector3; to: THREE.Vector3; d0: number; d1: number; t0: number; up: THREE.Vector3 | null } | null = null;
-    const flyTo = (dir: THREE.Vector3, dist: number, northUp = false) => {
-      flight = { from: camera.position.clone().normalize(), to: dir.clone().normalize(), d0: camera.position.length(), d1: dist, t0: performance.now(), up: northUp ? new THREE.Vector3(0, 1, 0) : null };
+    let flight: { from: THREE.Vector3; to: THREE.Vector3; d0: number; d1: number; t0: number; dur: number; up: THREE.Vector3 | null } | null = null;
+    const still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+    const flyTo = (dir: THREE.Vector3, dist: number, northUp = false, dur?: number) => {
+      const from = camera.position.clone().normalize(), to = dir.clone().normalize(), d0 = camera.position.length();
+      // longer trips take longer: a nudge is quick, a swing round the Moon or a deep zoom is a flight
+      const auto = 800 + 900 * (from.angleTo(to) / Math.PI) + 450 * Math.abs(Math.log(dist / d0));
+      flight = { from, to, d0, d1: dist, t0: performance.now(), dur: still ? 1 : dur ?? Math.min(2600, auto), up: northUp ? new THREE.Vector3(0, 1, 0) : null };
     };
 
     // ---- picking
@@ -259,10 +276,11 @@ export default function Globe3D({ sites, selectedId, sky, dateLabel, hillshade, 
     const tick = () => {
       raf = requestAnimationFrame(tick);
       if (flight) {
-        const k = Math.min(1, (performance.now() - flight.t0) / 1100), e = k < 0.5 ? 2 * k * k : 1 - (-2 * k + 2) ** 2 / 2;
+        const k = Math.min(1, (performance.now() - flight.t0) / flight.dur), e = k < 0.5 ? 4 * k * k * k : 1 - (-2 * k + 2) ** 3 / 2;
         const q = new THREE.Quaternion().setFromUnitVectors(flight.from, flight.to);
         const dir = flight.from.clone().applyQuaternion(new THREE.Quaternion().slerp(q, e));
-        camera.position.copy(dir.multiplyScalar(flight.d0 + (flight.d1 - flight.d0) * e));
+        // distance eases on a log scale, so a long approach closes at a steady apparent rate
+        camera.position.copy(dir.multiplyScalar(flight.d0 * Math.pow(flight.d1 / flight.d0, e)));
         if (flight.up) camera.up.lerp(flight.up, e).normalize();
         if (Math.abs(camera.up.dot(camera.position.clone().normalize())) > 0.97) camera.up.copy(onSphere(0, 0));
         camera.lookAt(0, 0, 0);
@@ -278,7 +296,7 @@ export default function Globe3D({ sites, selectedId, sky, dateLabel, hillshade, 
         // a name shows only on the side facing the camera; the pole's cluster only once close enough to tell apart
         const lab = m.userData.label as THREE.Sprite | undefined;
         if (lab) { const b = lab.userData.base as number[]; lab.scale.set((b[0] * textK) / m.scale.x, (b[1] * textK) / m.scale.x, 1); }
-        if (lab) lab.visible = m.position.dot(view) > 0.15 && (m.userData.selected || (m.userData.polar ? dist < 1.5 : dist > 1.9));
+        if (lab) lab.visible = m.position.dot(view) > 0.15 && (m.userData.selected || (m.userData.minor ? false : m.userData.polar ? dist < 1.5 : dist > 1.9));
       });
       renderer.render(scene, camera);
     };
@@ -362,7 +380,7 @@ export default function Globe3D({ sites, selectedId, sky, dateLabel, hillshade, 
       const sel = s.id === selectedId;
       const g = new THREE.Group();
       g.position.copy(onSphere(s.lat, s.lon, 1.004));
-      g.userData = { id: s.id, selected: sel, polar: s.lat < -80 };
+      g.userData = { id: s.id, selected: sel, polar: s.lat < -80, minor: s.minor };
       const r = s.kind === "mission" ? 0.011 : 0.015;
       const dot = new THREE.Mesh(new THREE.SphereGeometry(r, 16, 8), new THREE.MeshBasicMaterial({ color: s.lit ? LIT : DARK }));
       g.add(dot);
@@ -388,7 +406,16 @@ export default function Globe3D({ sites, selectedId, sky, dateLabel, hillshade, 
   useEffect(() => {
     const t = three.current;
     if (!t || !sel) return;
-    t.flyTo(onSphere(sel.lat, sel.lon), Math.min(t.camera.position.length(), immersive ? 4.3 : 2.5));
+    if (immersive && !arrived.current) {
+      // the way in: start far out on the night side of the site and sweep round to it
+      arrived.current = true;
+      const target = onSphere(sel.lat, sel.lon);
+      t.camera.position.copy(target.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), 2.2).add(new THREE.Vector3(0, 0.9, 0)).normalize().multiplyScalar(34));
+      t.camera.lookAt(0, 0, 0);
+      t.flyTo(target, 5.2, false, 4600);
+      return;
+    }
+    t.flyTo(onSphere(sel.lat, sel.lon), Math.min(t.camera.position.length(), immersive ? 5.2 : 2.5));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId, sel?.lat, sel?.lon]);
 

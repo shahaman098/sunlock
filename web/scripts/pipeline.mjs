@@ -56,6 +56,14 @@ const STAGES = [
     // per-site note; left out of the fingerprint so the two stages cannot trigger each other
   },
   {
+    // the photograph samples are committed (web/scripts/fetch-wac-movie.mjs makes them from 2.7 GB of
+    // LROC frames), so this stage runs offline like the others
+    id: "validate-wac-movie", cmd: ["node", "scripts/validate-wac-movie.mjs"],
+    code: ["web/scripts/validate-wac-movie.mjs", HZ, ...LIB("selene", "power")],
+    inputs: [src("ldem_80s_80m"), src("avgvisib_85s"), src("avgvisib_85s_lbl"), V + "wac-movie-samples.json", V + "wac-movie-samples.bin"],
+    outputs: [V + "result-wac-movie.json", T + "wac-movie.json", T + "wac-movie.bin"],
+  },
+  {
     id: "sites", cmd: ["node", "scripts/select-sites.mjs"],
     code: ["web/scripts/select-sites.mjs", HZ, ...LIB("selene")],
     inputs: [src("ldem_80s_80m"), src("avgvisib_85s"), src("avgvisib_85s_lbl"), src("avgvisib_85s_earth"), src("avgvisib_85s_earth_lbl"), src("lpsr_85s"), src("lpsr_85s_lbl"), src("wueller2026_sites"), V + "result-converged.json", V + "result-wac.json"],

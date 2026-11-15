@@ -168,7 +168,14 @@ npm run verify     # JPL Horizons, 12 epochs
 npm run validate   # pre-registered NASA map comparison
 npm run sites      # 130 published landing sites vs NASA sun + Earth maps
 npm test           # (to add) model, simulation and regression tests
+npm run validate:wac-movie   # shadow timing vs 261 timestamped LROC photographs (exploratory)
 ```
+
+Added 15 Nov: the timing comparison (`research/validation/result-wac-movie.json`) is exploratory,
+not pre-registered. Quote it with its caveats: 96.6% state agreement against an 81.2% "always
+dark" baseline; median timing error 0.5 h for the 84% of photographed transitions we match
+within a day; when we say a 7-day lander survives, the photographs agree 82.7% of the time;
+14-day stays untested. The app now opens in a full-screen 3D Moon; the console is one click away.
 
 Show the outputs in a "Reproduce" section of the README and in the drawer.
 

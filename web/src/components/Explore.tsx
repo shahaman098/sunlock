@@ -56,6 +56,8 @@ export default function Explore(p: Props) {
     <div className="ex">
       <div className={p.sceneMode === "surface" ? "ex-scene is-surface" : "ex-scene"}>{p.scene}</div>
 
+      <p className="ex-intro" aria-hidden><span>The Moon</span><b>Lunar south pole</b></p>
+
       <header className="ex-top">
         <div className="cx-brand">
           <span className="brand-mark" aria-hidden />
@@ -77,7 +79,7 @@ export default function Explore(p: Props) {
 
       <nav className="ex-sites ex-panel" aria-label="Landing sites">
         <span className="ex-k">NASA's Artemis III sites</span>
-        <span className="ex-sub">if you land {p.landLabel}</span>
+        <span className="ex-sub">sunniest first · if you land {p.landLabel}</span>
         <ul>
           {p.sites.map((s) => (
             <li key={s.id}>
@@ -172,6 +174,7 @@ export default function Explore(p: Props) {
           <div className="ex-date" role="status">
             <b>{p.dateText}</b>
             <span>{p.timeText} UTC</span>
+            <em className={p.playing ? "is-on" : ""}>{p.playing ? (p.speedH < 24 ? `${p.speedH} hours a second` : `${p.speedH / 24} day${p.speedH > 24 ? "s" : ""} a second`) : "paused"}</em>
           </div>
           <div className="ex-transport">
             <button className="tp-btn" onClick={() => p.onStep(6 * H)} aria-label="Forward six hours" title="Forward 6 hours (→)">+6 h</button>

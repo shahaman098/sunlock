@@ -623,7 +623,7 @@ export default function App() {
       sites.map((s) => {
         const ser = s.id === "custom" ? customSeries : series.get(s.id) ?? [];
         const kind: "nasa" | "mission" | "custom" = s.id === "custom" ? "custom" : s.mission ? "mission" : "nasa";
-        return { id: s.id, name: s.name, lat: s.lat, lon: s.lon, lit: ser[Math.min(landIdx, ser.length - 1)]?.lit ?? false, kind };
+        return { id: s.id, name: s.name, lat: s.lat, lon: s.lon, lit: ser[Math.min(landIdx, ser.length - 1)]?.lit ?? false, kind, minor: s.current === false || (!!s.mission && s.lat < -80) };
       }),
     [sites, series, customSeries, landIdx]
   );
@@ -798,7 +798,7 @@ export default function App() {
         onSelect={(id) => setSelectedId(id)}
         immersive={immersive}
         insetRight={immersive && vw >= 900 ? 336 - 240 : 0 /* right card less the left list: centred between them */}
-        insetBottom={immersive ? 124 - 56 : 0}
+        insetBottom={immersive ? 136 - 56 : 0}
         apiRef={immersive ? globeApi : undefined}
       />
     </Suspense>
@@ -843,7 +843,7 @@ export default function App() {
           yearStats={selStats ? { year, sunPct: selStats.illumPct, earthPct: selStats.commPct, darkDays: selStats.longestDarkH / 24 } : null}
           landerLine={`Land ${fmtDay(currentMs)} · ${missionDays} days · ${lander.loadW} W, ${lander.arrayM2} m², ${lander.batteryWh / 1000} kWh`}
           windows={windows.slice(0, 2).map((w) => ({ start: w.start, label: `${fmtDay(w.start)} ${new Date(w.start).toISOString().slice(11, 16)}`, meta: `battery ≥ ${w.minSocPct.toFixed(0)}%` }))}
-          sites={rankedCurrent.map((s) => {
+          sites={[...rankedCurrent].sort((a, b) => (b.longRun?.sunPct ?? 0) - (a.longRun?.sunPct ?? 0)).map((s) => {
             const run = landerBySite.get(s.id);
             return { id: s.id, name: s.name, lit: series.get(s.id)?.[landIdx]?.lit ?? false, survives: run && missionFits ? run.survives : null };
           })}
@@ -865,8 +865,8 @@ export default function App() {
             const g = globeApi.current;
             if (!g) return;
             if (to === "pole") g.go(-90, 0, 1.75);
-            else if (to === "earth") g.go(currentSky.subEarth.lat, currentSky.subEarth.lon, 4.3, true);
-            else if (to === "terminator") g.go(0, currentSky.subSun.lon + 80, 4.3, true);
+            else if (to === "earth") g.go(currentSky.subEarth.lat, currentSky.subEarth.lon, 5.2, true);
+            else if (to === "terminator") g.go(0, currentSky.subSun.lon + 80, 5.2, true);
             else if (selected) g.go(selected.lat, selected.lon, 1.35);
           }}
           onConsole={openConsole}
