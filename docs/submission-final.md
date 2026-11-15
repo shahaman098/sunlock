@@ -53,3 +53,37 @@ Tools
 TypeScript, React, three.js and Vite in the browser; Node scripts for the terrain pipeline and validation; Astronomy Engine for ephemerides; JPL Horizons for independent checks. The data pipeline records the SHA-256 of every NASA input and every output.
 
 Code: https://github.com/shahaman098/sunlock-app
+
+## NASA Data
+
+Use one row per resource. These entries group the individual files from the same NASA product archive.
+
+| Link Text | Link URL |
+|---|---|
+| NASA LRO LOLA south-pole elevation models, including LDEM_80S_80M | https://pds-geosciences.wustl.edu/lro/lro-l-lola-3-rdr-v1/lrolol_1xxx/data/lola_gdr/polar/img/ |
+| LOLA team lunar polar sunlight, Earth-visibility and permanent-shadow maps, PGDA product 69 | https://pgda.gsfc.nasa.gov/products/69 |
+| LROC Wide Angle Camera polar illumination maps and timestamped images | https://pds.lroc.asu.edu/data/LRO-L-LROC-5-RDR-V1.0/LROLRC_2001/DATA/BDR/WAC_POLE/ |
+| NASA JPL Horizons ephemeris service | https://ssd.jpl.nasa.gov/horizons/ |
+| NASA Scientific Visualization Studio CGI Moon Kit | https://svs.gsfc.nasa.gov/4720/ |
+
+## Space Agency Partner and Other Data
+
+| Link Text | Link URL |
+|---|---|
+| Wueller et al. supporting dataset for Artemis candidate landing locations, CC BY 4.0 | https://zenodo.org/records/17084058 |
+| Astronomy Engine, ephemerides and IAU 2015 lunar rotation model | https://github.com/cosinekitty/astronomy |
+| three.js, 3D rendering | https://threejs.org/ |
+| React, application interface | https://react.dev/ |
+| TypeScript, application language | https://www.typescriptlang.org/ |
+| Vite, development and production build | https://vite.dev/ |
+| Node.js, data processing and validation scripts | https://nodejs.org/ |
+| GitHub Pages, public hosting | https://pages.github.com/ |
+| OpenAI Codex, AI assistance with code, documentation and verification | https://openai.com/codex/ |
+
+## AI-use categories
+
+Ideation, Research, Coding, Writing, Presentation.
+
+## Team About
+
+We are the SUNLOCK team, building a lunar landing-window navigator for NASA Space Apps Challenge 2026. Our tool combines NASA terrain and illumination data with a browser-based mission power model to explore how landing location, arrival time and lander design affect a surface stay.
