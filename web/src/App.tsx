@@ -580,7 +580,7 @@ export default function App() {
       if (h.view) setMode(h.view);
       if (h.days !== undefined) setMissionDays(h.days);
       setPanelHeight(h.height ?? 0);
-      if (h.panels) setArrayMode(h.panels);
+      setArrayMode(h.panels ?? "tracking");
       setMaxOutageH(h.outage ?? null);
       setReservePct(h.reserve ?? 0);
       setLander((l) => ({
