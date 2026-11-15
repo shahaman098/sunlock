@@ -1,5 +1,5 @@
 {
-  "generated": "2026-11-14T17:40:46.722Z",
+  "generated": "2026-11-15T01:14:09.060Z",
   "site": "Peak near Shackleton",
   "note": "Same coordinate, same 64 km range, same curvature correction; only the distance between samples changes.",
   "rows": [
@@ -9,7 +9,7 @@
       "stepM": 80,
       "stepsPerPixel": 1,
       "meanHorizonDeg": -1.05,
-      "illumPct": 54.2
+      "illumPct": 60.6
     },
     {
       "product": "80 m",
@@ -17,7 +17,7 @@
       "stepM": 160,
       "stepsPerPixel": 2,
       "meanHorizonDeg": -1.74,
-      "illumPct": 86.4
+      "illumPct": 73.4
     },
     {
       "product": "80 m",
@@ -25,7 +25,7 @@
       "stepM": 320,
       "stepsPerPixel": 4,
       "meanHorizonDeg": -2.24,
-      "illumPct": 93.3
+      "illumPct": 81.8
     },
     {
       "product": "40 m",
@@ -33,7 +33,7 @@
       "stepM": 80,
       "stepsPerPixel": 2,
       "meanHorizonDeg": -0.44,
-      "illumPct": 36.8
+      "illumPct": 42.4
     },
     {
       "product": "40 m",
@@ -41,7 +41,7 @@
       "stepM": 160,
       "stepsPerPixel": 4,
       "meanHorizonDeg": -1.5,
-      "illumPct": 76.8
+      "illumPct": 70.9
     },
     {
       "product": "40 m",
@@ -49,7 +49,7 @@
       "stepM": 320,
       "stepsPerPixel": 8,
       "meanHorizonDeg": -2.1,
-      "illumPct": 92.7
+      "illumPct": 79.8
     },
     {
       "product": "20 m",
@@ -65,7 +65,7 @@
       "stepM": 160,
       "stepsPerPixel": 8,
       "meanHorizonDeg": -1.68,
-      "illumPct": 85.9
+      "illumPct": 73
     },
     {
       "product": "20 m",
@@ -73,7 +73,7 @@
       "stepM": 320,
       "stepsPerPixel": 16,
       "meanHorizonDeg": -2.19,
-      "illumPct": 94.4
+      "illumPct": 81.7
     }
   ]
 }
