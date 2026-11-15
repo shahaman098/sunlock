@@ -49,3 +49,24 @@ for (const h of HORIZONS) {
     near(e.az, h.earth[0], 0.02, "Earth az"); near(e.elev, h.earth[1], 0.02, "Earth el");
   });
 }
+
+// Event timing, not just averages: sunrise/sunset (upper limb on a flat horizon) against
+// NASA JPL Horizons over Jan-Mar 2027 (fixture fetched from the Horizons API, see its "source").
+test("sunrise and sunset times match JPL Horizons (equator to 2 min; near the pole to 20 min)", async () => {
+  const fs = await import("node:fs");
+  const { skyAt, siteBasis, lookAngles } = await import("../.build/selene.js");
+  const fx = JSON.parse(fs.readFileSync(new URL("./fixtures/horizons-sun-events.json", import.meta.url)));
+  const tol = { apollo11: 2, dgr2: 20 }; // minutes; at the pole the Sun crawls along the horizon
+  for (const [name, { site, events }] of Object.entries(fx.sites)) {
+    assert.ok(events.length >= 4, `${name}: events`);
+    const b = siteBasis(site.lat, site.lon);
+    const above = (t) => lookAngles(skyAt(new Date(t)).sun, b).elev > -0.266;
+    for (const e of events) {
+      let lo = e.t - 3 * 3600e3, hi = e.t + 3 * 3600e3;
+      assert.notEqual(above(lo), above(hi), `${name}: we find no crossing near ${new Date(e.t).toISOString()}`);
+      for (let k = 0; k < 40; k++) { const m = (lo + hi) / 2; if (above(m) === above(lo)) lo = m; else hi = m; }
+      const dMin = Math.abs((lo + hi) / 2 - e.t) / 60000;
+      assert.ok(dMin <= tol[name], `${name} ${e.rise ? "sunrise" : "sunset"} ${new Date(e.t).toISOString()}: off by ${dMin.toFixed(1)} min`);
+    }
+  }
+});

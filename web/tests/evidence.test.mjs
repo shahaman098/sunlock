@@ -59,3 +59,38 @@ test("notable landings: Apollo, CLPS and other countries present; planned target
   }
   assert.ok(m.some((x) => x.approx), "planned mission targets present");
 });
+
+test("site finder: each candidate spot sits where its numbers come from, and flatter spots are kept", () => {
+  const meta = JSON.parse(fs.readFileSync(new URL("../public/terrain/finder.json", import.meta.url)));
+  const bin = fs.readFileSync(new URL("../public/terrain/finder.bin", import.meta.url));
+  const { n, k, bytesPerCandidate: B, cellM, halfM, pixM, off } = meta;
+  assert.equal(bin.length, n * n * k * B);
+  // the NASA sunlight raster the finder was built from, if this machine has it
+  const raw = new URL("../../research/validation/raw/AVGVISIB_85S_060M_201608.IMG", import.meta.url);
+  const nasa = fs.existsSync(raw) ? new Int16Array(fs.readFileSync(raw).buffer) : null;
+  let checked = 0, keptFlatter = 0;
+  for (let j = 7; j < n; j += 23) {
+    for (let i = 5; i < n; i += 19) {
+      for (let c = 0; c < k; c++) {
+        const o = ((j * n + i) * k + c) * B;
+        if (bin[o] === 255) continue;
+        // the stored pixel lies inside its own cell
+        const a = Math.floor(off + (-halfM + i * cellM) / pixM) + bin[o + 4];
+        const b = Math.floor(off + (-halfM + j * cellM) / pixM) + bin[o + 5];
+        const xm = (a + 0.5 - off) * pixM, ym = (b + 0.5 - off) * pixM;
+        assert.ok(xm >= -halfM + i * cellM - pixM && xm <= -halfM + (i + 1) * cellM + pixM, "x inside cell");
+        assert.ok(ym >= -halfM + j * cellM - pixM && ym <= -halfM + (j + 1) * cellM + pixM, "y inside cell");
+        if (nasa) assert.equal(bin[o], Math.round(100 * nasa[b * (2 * off + 1) + a] * 0.00004), `cell ${i},${j} candidate ${c}`);
+        checked++;
+      }
+      // a steep sunniest spot must not hide a flatter, slightly darker one
+      const o0 = ((j * n + i) * k) * B, o1 = o0 + B;
+      if (bin[o0] !== 255 && bin[o0 + 2] / 4 > 8 && bin[o1] !== 255) {
+        assert.ok(bin[o1 + 2] / 4 <= 8 && bin[o1] <= bin[o0]);
+        keptFlatter++;
+      }
+    }
+  }
+  assert.ok(checked > 500, `checked ${checked}`);
+  assert.ok(keptFlatter > 0, "some cells keep a flatter alternative");
+});

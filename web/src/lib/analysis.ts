@@ -7,6 +7,8 @@ export type Sample = {
   sunElev: number;
   /** degrees from north, for panels that do not track the Sun */
   sunAz: number;
+  /** share of the solar disc above the skyline, 0..1 */
+  sunFrac: number;
   earthElev: number;
   /** degrees of clearance between Earth and the local skyline (negative = blocked) */
   earthMargin: number;
@@ -30,6 +32,7 @@ export function siteSeries(site: Site, skies: Sky[]): Sample[] {
       comm: r.comm,
       sunElev: r.sunElev,
       sunAz: r.sunAz,
+      sunFrac: r.sunFrac,
       earthElev: r.earthElev,
       earthMargin: r.earthElev - r.earthHorizon,
       power: r.lit ? Math.max(0, Math.sin((r.sunElev * Math.PI) / 180)) : 0,
@@ -201,4 +204,27 @@ export function commWindows(samples: Sample[], stepMin: number): CommWindow[] {
 /** The next few windows after `nowMs`. Never wraps: showing a past window as upcoming would mislead. */
 export function upcomingWindows(windows: CommWindow[], nowMs: number, count = 4): CommWindow[] {
   return windows.filter((w) => w.end >= nowMs).slice(0, count);
+}
+
+/**
+ * Terrain sensitivity: the same site with every skyline raised by one angle, chosen so this
+ * year's sunlight falls by `dropPp` percentage points (we use our RMS disagreement with NASA's
+ * map at published landing sites). Returns the raised series and the angle.
+ */
+export function raisedTerrain(site: Site, skies: Sky[], yearN: number, dropPp: number) {
+  const pct = (ser: Sample[]) => {
+    let lit = 0;
+    for (let i = 0; i < yearN; i++) lit += ser[i].lit ? 1 : 0;
+    return (100 * lit) / yearN;
+  };
+  const at = (d: number) => siteSeries({ ...site, horizonDeg: site.horizonDeg.map((h) => h + d) }, skies);
+  const base = pct(siteSeries(site, skies));
+  const target = Math.max(0, base - dropPp);
+  let lo = 0, hi = 4, best = at(hi);
+  if (pct(best) > target) return { samples: best, raiseDeg: hi };
+  for (let k = 0; k < 10; k++) {
+    const mid = (lo + hi) / 2, ser = at(mid);
+    if (pct(ser) > target) lo = mid; else { hi = mid; best = ser; }
+  }
+  return { samples: best, raiseDeg: hi };
 }

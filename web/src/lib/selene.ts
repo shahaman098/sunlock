@@ -124,6 +124,8 @@ export type Site = {
   };
   /** horizons with the panels raised above the ground (0, 2, 10 m) */
   heights?: { heightM: number; sunPct: number; horizonDeg: number[] }[];
+  /** a position derived from a named site (its id): skyline = that site's plus the coarse-grid change */
+  nearOf?: string;
 };
 
 export function siteBasis(lat: number, lon: number) {
@@ -161,7 +163,20 @@ export const EARTH_ANGULAR_RADIUS = 0.95;
  */
 export const SUN_ANGULAR_RADIUS = 0.266;
 
+/**
+ * Share of the solar disc (radius 0.266 deg) above a straight skyline, given how far the
+ * Sun's centre is above it: 0 below, 0.5 when the centre sits on it, 1 once it has cleared.
+ */
+export function visibleDiscFraction(centreAboveHorizonDeg: number, radiusDeg = SUN_ANGULAR_RADIUS): number {
+  const x = centreAboveHorizonDeg / radiusDeg;
+  if (x >= 1) return 1;
+  if (x <= -1) return 0;
+  return 1 - (Math.acos(x) - x * Math.sqrt(1 - x * x)) / Math.PI;
+}
+
 export type Reading = {
+  /** share of the solar disc above the skyline, 0..1 (power uses this) */
+  sunFrac: number;
   sunElev: number;
   sunAz: number;
   sunHorizon: number;
@@ -188,6 +203,7 @@ export function readSite(site: Site, sky: Sky, basis = siteBasis(site.lat, site.
   const sh = horizonAt(site.horizonDeg, s.az);
   const eh = horizonAt(site.horizonDeg, e.az);
   return {
+    sunFrac: visibleDiscFraction(s.elev - sh),
     sunElev: s.elev,
     sunAz: s.az,
     sunHorizon: sh,

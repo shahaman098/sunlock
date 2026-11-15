@@ -5,10 +5,11 @@ import TimelineStrip from "./components/TimelineStrip";
 import Porkchop from "./components/Porkchop";
 // three.js is only downloaded when someone opens the 3D view
 const Terrain3D = lazy(() => import("./components/Terrain3D"));
-import { buildShadowField, loadTerrain, computeShadow, customHorizon, unprojectFromUnit, type ElevationGrid, type ShadowField, type TerrainMeta } from "./lib/terrain";
-import { buildSkies, commWindows, findWindows, siteSeries, statsFor, upcomingWindows } from "./lib/analysis";
+import { classify, loadFinder, type Finder, type FinderLimits } from "./lib/finder";
+import { buildShadowField, loadTerrain, computeShadow, customHorizon, nearbyHorizon, offsetPoint, unprojectFromUnit, type ElevationGrid, type ShadowField, type TerrainMeta } from "./lib/terrain";
+import { buildSkies, commWindows, raisedTerrain, siteSeries, statsFor, upcomingWindows } from "./lib/analysis";
 import { skyAt, readSite, siteBasis, lookAngles, type Site } from "./lib/selene";
-import { arrayPowerPerM2, batteryWh, energyWh, fmtEnergy, fmtPower, simulateMission, porkchopRow, sizeToSurvive, type ArrayMode, type LanderSpec } from "./lib/power";
+import { arrayPowerPerM2, batteryWh, energyWh, fmtEnergy, fmtPower, simulateMission, porkchopRow, sizeToSurvive, stressTest, limitingCase, robustOptions, allCasesPass, earliestSurvivable, type ArrayMode, type LanderSpec, type MissionResult, type MissionRequirements, type StressCase, type TerrainCase } from "./lib/power";
 
 const STEP_MIN = 30;
 const STEP_MS = STEP_MIN * 60000;
@@ -16,6 +17,10 @@ const DAY_MS = 86400000;
 /** Landing years the app models, one calendar year at a time (a full seasonal cycle). */
 const YEARS = [2026, 2027, 2028, 2029, 2030];
 const DEFAULT_YEAR = 2027;
+/** extra days of data after 31 December, enough for the longest stay */
+// longest mission (30 d) + the longest late-arrival case (3 d) + 1 d margin, so every
+// stress case of any landing in the year is evaluated rather than left unknown
+const PAD_DAYS = 34;
 
 /** The modelled window for one calendar year, with the marks for its time axis. */
 function yearWindow(year: number) {
@@ -68,6 +73,7 @@ function readHash() {
     const height = num("height", 0, 10);
     return {
       site: p.get("site") ?? undefined,
+      near: p.get("near") ?? undefined,
       lat: num("lat", -90, 90),
       lon: num("lon", -180, 360),
       landMs: Number.isFinite(landMs) && YEARS.includes(new Date(landMs).getUTCFullYear())
@@ -77,6 +83,8 @@ function readHash() {
       height: height !== undefined && HEIGHT_CHOICES.includes(height) ? height : undefined,
       load: num("load", 10, 2000),
       heater: num("heater", 0, 2000),
+      outage: num("outage", 1, 240),
+      reserve: num("reserve", 0, 50),
       panels: (["tracking", "vertical", "horizontal"] as const).find((m) => m === p.get("panels")),
       array: num("array", 0.5, 50),
       battery: num("battery", 1, 200),
@@ -86,6 +94,15 @@ function readHash() {
   }
 }
 const INITIAL = readHash();
+
+const NEAR_DIRS = ["north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west"];
+
+/** Great-circle distance on the Moon, metres. */
+function dist(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const D = Math.PI / 180;
+  const c = Math.sin(lat1 * D) * Math.sin(lat2 * D) + Math.cos(lat1 * D) * Math.cos(lat2 * D) * Math.cos((lon1 - lon2) * D);
+  return Math.acos(Math.min(1, Math.max(-1, c))) * 1737400;
+}
 
 const fmtDate = (ms: number) =>
   new Date(ms).toLocaleString("en-GB", {
@@ -137,7 +154,7 @@ export default function App() {
   const [meta, setMeta] = useState<TerrainMeta | null>(null);
   const [field, setField] = useState<ShadowField | null>(null);
   const [hillshade, setHillshade] = useState<HTMLImageElement | null>(null);
-  const [selectedId, setSelectedId] = useState(INITIAL.site ?? "");
+  const [selectedId, setSelectedIdRaw] = useState(INITIAL.site ?? "");
   const [lander, setLander] = useState<LanderSpec>({
     ...DEFAULT_LANDER,
     loadW: INITIAL.load ?? DEFAULT_LANDER.loadW,
@@ -187,6 +204,10 @@ export default function App() {
     if (y !== year && YEARS.includes(y)) setYear(y);
   }, [currentMs, year]);
   const [missionDays, setMissionDays] = useState(INITIAL.days ?? 14);
+  /** longest time Earth may be out of view; null = no requirement (relay or autonomous lander) */
+  const [maxOutageH, setMaxOutageH] = useState<number | null>(INITIAL.outage ?? null);
+  const [reservePct, setReservePct] = useState<number>(INITIAL.reserve ?? 0);
+  const req = useMemo(() => ({ maxEarthOutageH: maxOutageH, reservePct }), [maxOutageH, reservePct]);
   const [arrayMode, setArrayMode] = useState<ArrayMode>(INITIAL.panels ?? "tracking");
   const [error, setError] = useState<string | null>(null);
   const [verify, setVerify] = useState<{
@@ -198,7 +219,21 @@ export default function App() {
   const [customSite, setCustomSite] = useState<Site | null>(null);
   const [missionSites, setMissionSites] = useState<Site[]>([]);
   const [compareIds, setCompareIds] = useState<string[]>([]);
-  const [stageView, setStageView] = useState<"map" | "3d">("map");
+  const [sameSpotNote, setSameSpotNote] = useState<string | null>(null);
+  /** choosing a site any other way clears the "same spot as" note */
+  const setSelectedId = (id: string) => { setSameSpotNote(null); setSelectedIdRaw(id); };
+  const [stageView, setStageView] = useState<"map" | "finder" | "3d">("map");
+  const [finderData, setFinderData] = useState<Finder | null>(null);
+  const [finderErr, setFinderErr] = useState<string | null>(null);
+  const [limits, setLimits] = useState<FinderLimits>({ sunPct: 50, earthPct: 50, slopeDeg: 8, shadowKm: 5 });
+  // the finder grid (3 MB) is only downloaded the first time someone opens it
+  useEffect(() => {
+    if (stageView !== "finder" || finderData) return;
+    let alive = true;
+    loadFinder().then((f) => alive && setFinderData(f)).catch((e) => alive && setFinderErr(String(e)));
+    return () => { alive = false; };
+  }, [stageView, finderData]);
+  const finderResult = useMemo(() => (finderData ? classify(finderData, limits) : null), [finderData, limits]);
 
   useEffect(() => {
     let alive = true;
@@ -236,7 +271,10 @@ export default function App() {
     return () => { alive = false; };
   }, []);
 
-  const skies = useMemo(() => buildSkies(new Date(win.startMs), win.days, STEP_MIN), [win]);
+  // the data runs PAD_DAYS past the year so a landing on 31 December can still be evaluated;
+  // charts, statistics and the date grid stay on the chosen year (YEAR_N samples)
+  const skies = useMemo(() => buildSkies(new Date(win.startMs), win.days + PAD_DAYS, STEP_MIN), [win]);
+  const YEAR_N = win.days * (1440 / STEP_MIN) + 1;
   // Sites seen from the chosen panel height: swap in the horizon re-marched from that height.
   const officialSites = useMemo(
     () =>
@@ -253,8 +291,8 @@ export default function App() {
     [namedSites, skies]
   );
   const stats = useMemo(
-    () => new Map(namedSites.map((s) => [s.id, statsFor(series.get(s.id)!, STEP_MIN)])),
-    [namedSites, series]
+    () => new Map(namedSites.map((s) => [s.id, statsFor(series.get(s.id)!.slice(0, YEAR_N), STEP_MIN)])),
+    [namedSites, series, YEAR_N]
   );
   const sites = useMemo(
     () => (customSite ? [...namedSites, customSite] : namedSites),
@@ -275,8 +313,8 @@ export default function App() {
     [customSite, skies]
   );
   const customStats = useMemo(
-    () => (customSite && customSeries.length ? statsFor(customSeries, STEP_MIN) : undefined),
-    [customSite, customSeries]
+    () => (customSite && customSeries.length ? statsFor(customSeries.slice(0, YEAR_N), STEP_MIN) : undefined),
+    [customSite, customSeries, YEAR_N]
   );
 
   const selSeries = useMemo(
@@ -288,6 +326,7 @@ export default function App() {
         : [],
     [selected, customSeries, series]
   );
+  const yearSeries = useMemo(() => selSeries.slice(0, YEAR_N), [selSeries, YEAR_N]);
   const selStats = useMemo(
     () =>
       selected
@@ -303,8 +342,22 @@ export default function App() {
    * from the terrain grid; elsewhere it is the edge of the lunar sphere, and we say so.
    */
   const checkCoords = (latIn: number, lonIn: number, how: "map" | "typed") => {
-    const lat = Number(latIn.toFixed(3));
-    const lon = Number((((lonIn % 360) + 360) % 360).toFixed(3));
+    // keep the precision the user gave (5 decimals is ~0.3 m)
+    const lat = Number(latIn.toFixed(5));
+    const lon = Number((((lonIn % 360) + 360) % 360).toFixed(5));
+    // the same spot as a named site gets that site's detailed result, not a second, coarser one
+    const D = Math.PI / 180;
+    const metres = (s: Site) => {
+      const c = Math.sin(lat * D) * Math.sin(s.lat * D) + Math.cos(lat * D) * Math.cos(s.lat * D) * Math.cos((lon - s.lon) * D);
+      return Math.acos(Math.min(1, Math.max(-1, c))) * 1737400;
+    };
+    const same = namedSites.find((s) => s.terrain !== false && metres(s) <= 5);
+    if (same) {
+      setSameSpotNote(`${lat.toFixed(4)}, ${lon.toFixed(4)} is the same spot as ${same.name} (within 5 m), so its detailed result is shown.`);
+      setSelectedIdRaw(same.id);
+      return true;
+    }
+    setSameSpotNote(null);
     const polar = lat <= -80;
     if (polar && !elevation) return false;
     const { horizon, elevationM } = polar ? customHorizon(elevation!, lat, lon) : { horizon: new Array(360).fill(0), elevationM: 0 };
@@ -316,7 +369,7 @@ export default function App() {
       elevationM,
       terrain: polar,
       blurb: polar
-        ? "A spot you chose inside our south-pole terrain map. It is checked with a coarser terrain grid (about 600 m detail) than the named sites, so treat it as a rough guide."
+        ? "Preliminary: a spot you chose inside our south-pole terrain map, checked on a coarser terrain grid (about 600 m detail, 150 km reach) than the named sites (80 m). Hills smaller than about a kilometre are missed, so treat the verdict as an early estimate."
         : "A spot you chose outside our south-pole terrain map, so the horizon here is the edge of the lunar sphere (no hills). Sun and Earth positions are exact; hills nearby could shift sunrise and sunset.",
       horizonDeg: horizon,
     });
@@ -333,9 +386,29 @@ export default function App() {
   const [hashPointDone, setHashPointDone] = useState(false);
   useEffect(() => {
     if (hashPointDone || INITIAL.lat === undefined || INITIAL.lon === undefined) return;
+    // a shared nearby position is rebuilt the same way it was offered (parent skyline + grid change)
+    if (INITIAL.near) {
+      if (!elevation || !officialSites.length) return;
+      const parent = officialSites.find((s) => s.id === INITIAL.near);
+      const h = parent ? nearbyHorizon(elevation, parent, INITIAL.lat, INITIAL.lon) : null;
+      if (parent && h) {
+        const km = Math.round(dist(parent.lat, parent.lon, INITIAL.lat, INITIAL.lon) / 100) / 10;
+        const D = Math.PI / 180, f1 = parent.lat * D, f2 = INITIAL.lat * D, dl = (INITIAL.lon - parent.lon) * D;
+        const brg = Math.atan2(Math.sin(dl) * Math.cos(f2), Math.cos(f1) * Math.sin(f2) - Math.sin(f1) * Math.cos(f2) * Math.cos(dl)) / D;
+        const dir = NEAR_DIRS[Math.round((((brg % 360) + 360) % 360) / 45) % 8];
+        setCustomSite({
+          id: "custom", name: `${km} km ${dir} of ${parent.name}`, lat: INITIAL.lat, lon: INITIAL.lon, elevationM: h.elevationM,
+          terrain: true, nearOf: parent.id, horizonDeg: h.horizon,
+          blurb: `Preliminary: ${km} km ${dir} of ${parent.name}. Its skyline is ${parent.name}'s detailed 80 m skyline adjusted by the change our ~600 m terrain grid sees over that distance. Slope and hazards at this spot are not checked.`,
+        });
+        setSelectedId("custom");
+        setHashPointDone(true);
+        return;
+      }
+    }
     if (checkCoords(INITIAL.lat, INITIAL.lon, "typed")) setHashPointDone(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [elevation, hashPointDone]);
+  }, [elevation, hashPointDone, officialSites]);
 
   const currentSky = useMemo(() => skyAt(new Date(currentMs)), [currentMs]);
   const shadow = useMemo(() => (field ? computeShadow(field, currentSky) : null), [field, currentSky]);
@@ -372,21 +445,45 @@ export default function App() {
     return pts;
   }, [selected, currentMs]);
 
-  const windows = useMemo(
-    () => (selSeries.length ? findWindows(selSeries, STEP_MIN, missionDays, 4) : []),
-    [selSeries, missionDays]
-  );
+  /**
+   * Best landing dates for THIS lander and requirements: every 6-hour landing time is run
+   * through the mission evaluator; the ones that succeed are ranked by battery left at the
+   * worst moment, at least 3 days apart.
+   */
+  const windows = useMemo(() => {
+    if (!selSeries.length) return [];
+    const steps = Math.round((missionDays * 1440) / STEP_MIN), stride = Math.round(360 / STEP_MIN);
+    const row = porkchopRow(selSeries, steps, stride, STEP_MIN, arrayMode, lander, req);
+    // running totals so every candidate's Earth and Sun share is cheap
+    const sunCum = new Float64Array(selSeries.length + 1), commCum = new Float64Array(selSeries.length + 1);
+    selSeries.forEach((x, i) => { sunCum[i + 1] = sunCum[i] + x.sunFrac; commCum[i + 1] = commCum[i] + (x.comm ? 1 : 0); });
+    const share = (cum: Float64Array, c: number) => (cum[c * stride + steps] - cum[c * stride]) / steps;
+    const cand: number[] = [];
+    for (let c = 0; c < row.length; c++) if (row[c] >= 0 && selSeries[c * stride].t <= END_MS) cand.push(c);
+    // most battery to spare first; among equals, more time with Earth in view, then more Sun
+    cand.sort((a, b) => Math.round(row[b]) - Math.round(row[a]) || share(commCum, b) - share(commCum, a) || share(sunCum, b) - share(sunCum, a) || a - b);
+    const picked: number[] = [];
+    for (const c of cand) {
+      if (picked.every((q) => Math.abs(q - c) * stride >= 3 * 48)) picked.push(c);
+      if (picked.length >= 4) break;
+    }
+    return picked.sort((a, b) => a - b).map((c) => {
+      const i0 = c * stride, slice = selSeries.slice(i0, i0 + steps);
+      const sun = slice.reduce((n, x) => n + x.sunFrac, 0), comm = slice.reduce((n, x) => n + (x.comm ? 1 : 0), 0);
+      return { start: selSeries[i0].t, minSocPct: row[c], illumPct: (100 * sun) / slice.length, commPct: (100 * comm) / slice.length };
+    });
+  }, [selSeries, missionDays, arrayMode, lander, req, END_MS]);
 
-  const comms = useMemo(() => (selSeries.length ? commWindows(selSeries, STEP_MIN) : []), [selSeries]);
+  const comms = useMemo(() => (selSeries.length ? commWindows(selSeries.slice(0, YEAR_N), STEP_MIN) : []), [selSeries, YEAR_N]);
   const nextComms = useMemo(() => (comms.length ? upcomingWindows(comms, currentMs, 4) : []), [comms, currentMs]);
 
   const powerNow = reading ? arrayPowerPerM2(reading.sunElev, reading.lit, arrayMode, reading.sunAz) : 0;
   /** average kWh per m^2 per day for each way of mounting the panels, at this site this year */
   const perDayByMode = useMemo(
-    () => Object.fromEntries(PANEL_MODES.map((m) => [m, selSeries.length ? energyWh(selSeries, STEP_MIN, m, 1) / DAYS / 1000 : 0])) as Record<ArrayMode, number>,
-    [selSeries, DAYS]
+    () => Object.fromEntries(PANEL_MODES.map((m) => [m, selSeries.length ? energyWh(selSeries.slice(0, YEAR_N), STEP_MIN, m, 1) / DAYS / 1000 : 0])) as Record<ArrayMode, number>,
+    [selSeries, DAYS, YEAR_N]
   );
-  const energyTotal = selSeries.length ? energyWh(selSeries, STEP_MIN, arrayMode, 1) : 0;
+  const energyTotal = selSeries.length ? energyWh(selSeries.slice(0, YEAR_N), STEP_MIN, arrayMode, 1) : 0;
   const energyPerDay = energyTotal / DAYS;
   const battery = selStats ? batteryWh(selStats.longestDarkH, lander.loadW + (lander.heaterW ?? 0), lander.dod) : 0;
 
@@ -444,6 +541,8 @@ export default function App() {
       if (h.days !== undefined) setMissionDays(h.days);
       setPanelHeight(h.height ?? 0);
       if (h.panels) setArrayMode(h.panels);
+      setMaxOutageH(h.outage ?? null);
+      setReservePct(h.reserve ?? 0);
       setLander((l) => ({
         ...l,
         loadW: h.load ?? l.loadW,
@@ -460,9 +559,9 @@ export default function App() {
   const shareHash = useMemo(() => {
     if (!selected) return "";
     const iso = new Date(currentMs).toISOString().slice(0, 16) + "Z";
-    const where = selected.id === "custom" ? `lat=${selected.lat}&lon=${selected.lon}` : `site=${selected.id}`;
-    return `${where}&land=${iso}&days=${missionDays}&load=${lander.loadW}&array=${lander.arrayM2}&battery=${lander.batteryWh / 1000}${lander.heaterW ? `&heater=${lander.heaterW}` : ""}${arrayMode !== "tracking" ? `&panels=${arrayMode}` : ""}${panelHeight ? `&height=${panelHeight}` : ""}`;
-  }, [selected, currentMs, missionDays, lander, panelHeight, arrayMode]);
+    const where = selected.id === "custom" ? `${selected.nearOf ? `near=${selected.nearOf}&` : ""}lat=${selected.lat}&lon=${selected.lon}` : `site=${selected.id}`;
+    return `${where}&land=${iso}&days=${missionDays}&load=${lander.loadW}&array=${lander.arrayM2}&battery=${lander.batteryWh / 1000}${lander.heaterW ? `&heater=${lander.heaterW}` : ""}${arrayMode !== "tracking" ? `&panels=${arrayMode}` : ""}${panelHeight ? `&height=${panelHeight}` : ""}${maxOutageH !== null ? `&outage=${maxOutageH}` : ""}${reservePct ? `&reserve=${reservePct}` : ""}`;
+  }, [selected, currentMs, missionDays, lander, panelHeight, arrayMode, maxOutageH, reservePct]);
   // Keep the URL hash in sync so any view can be shared as a link.
   useEffect(() => {
     shareHashRef.current = shareHash;
@@ -478,35 +577,121 @@ export default function App() {
   const landIdx = Math.max(0, Math.round((currentMs - START_MS) / STEP_MS));
   const missionFits = landIdx + missionSteps <= selSeries.length;
   const selLander = useMemo(
-    () => (selSeries.length ? simulateMission(selSeries, landIdx, missionSteps, STEP_MIN, arrayMode, lander) : null),
-    [selSeries, landIdx, missionSteps, arrayMode, lander]
+    () => (selSeries.length ? simulateMission(selSeries, landIdx, missionSteps, STEP_MIN, arrayMode, lander, req) : null),
+    [selSeries, landIdx, missionSteps, arrayMode, lander, req]
   );
   const landerBySite = useMemo(
     () =>
       new Map(
         namedSites.map((s) => {
           const ser = series.get(s.id) ?? [];
-          return [s.id, ser.length ? simulateMission(ser, landIdx, missionSteps, STEP_MIN, arrayMode, lander) : null];
+          return [s.id, ser.length ? simulateMission(ser, landIdx, missionSteps, STEP_MIN, arrayMode, lander, req) : null];
         })
       ),
-    [namedSites, series, landIdx, missionSteps, arrayMode, lander]
+    [namedSites, series, landIdx, missionSteps, arrayMode, lander, req]
   );
 
   /** The design answer: the smallest battery and the smallest panel area that survive this landing. */
   const sizing = useMemo(
-    () => (selSeries.length && landIdx + missionSteps <= selSeries.length ? sizeToSurvive(selSeries, landIdx, missionSteps, STEP_MIN, arrayMode, lander) : null),
-    [selSeries, landIdx, missionSteps, arrayMode, lander]
+    () => (selSeries.length && landIdx + missionSteps <= selSeries.length ? sizeToSurvive(selSeries, landIdx, missionSteps, STEP_MIN, arrayMode, lander, req) : null),
+    [selSeries, landIdx, missionSteps, arrayMode, lander, req]
   );
+
+  /**
+   * Terrain sensitivity for the selected site: skylines raised until this year's sunlight falls
+   * by our RMS disagreement with NASA's map at published landing sites (6.8 points).
+   */
+  const terrainDropPp = validation?.landingSites.rmsePp ?? 6.8;
+  /**
+   * Each site's terrain case is calibrated on that site, so it is the same wherever it is used
+   * (selected site, other sites, nearby positions). Cached because each costs ~11 series runs.
+   */
+  // the deps are what invalidates the cache
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const terrainCache = useMemo(() => new Map<string, TerrainCase>(), [skies, YEAR_N, terrainDropPp]);
+  const terrainFor = (s: Site): TerrainCase => {
+    const key = `${s.lat}:${s.lon}:${s.horizonDeg.reduce((a, b) => a + b, 0).toFixed(4)}`;
+    let c = terrainCache.get(key);
+    if (!c) {
+      const t = raisedTerrain(s, skies, YEAR_N, terrainDropPp);
+      c = { samples: t.samples, label: `Hills ${t.raiseDeg.toFixed(2)}° higher (sunlight −${terrainDropPp} pts, our typical error)` };
+      terrainCache.set(key, c);
+    }
+    return c;
+  };
+  const terrainCase = useMemo(
+    () => (selected ? terrainFor(selected) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [selected, terrainCache]
+  );
+
+  /**
+   * Nearby alternative positions: 1 and 2 km from a named site in 8 directions. Each skyline is
+   * the site's detailed one plus the change our ~600 m grid sees, so at zero distance it is the
+   * site itself. Closer than 1 km is below what that grid resolves, so it is not offered.
+   */
+  const nearbyCandidates = useMemo(() => {
+    if (!selected || selected.id === "custom" || selected.terrain === false || selected.lat > -80 || !elevation) return [];
+    const out: { site: Site; km: number; samples: ReturnType<typeof siteSeries> }[] = [];
+    for (const km of [1, 2]) {
+      NEAR_DIRS.forEach((dir, k) => {
+        const p = offsetPoint(selected.lat, selected.lon, k * 45, km * 1000);
+        const h = nearbyHorizon(elevation, selected, p.lat, p.lon);
+        if (!h) return;
+        const site: Site = {
+          id: "custom",
+          name: `${km} km ${dir} of ${selected.name}`,
+          lat: Number(p.lat.toFixed(5)),
+          lon: Number(p.lon.toFixed(5)),
+          elevationM: h.elevationM,
+          terrain: true,
+          nearOf: selected.id,
+          blurb: `Preliminary: ${km} km ${dir} of ${selected.name}. Its skyline is ${selected.name}'s detailed 80 m skyline adjusted by the change our ~600 m terrain grid sees over that distance. Slope and hazards at this spot are not checked.`,
+          horizonDeg: h.horizon,
+        };
+        out.push({ site, km, samples: siteSeries(site, skies) });
+      });
+    }
+    return out;
+  }, [selected, elevation, skies]);
+
+  /** The same landing under adverse assumptions: which one breaks the plan. */
+  const stress = useMemo(
+    () => (selSeries.length && landIdx + missionSteps <= selSeries.length ? stressTest(selSeries, landIdx, missionSteps, STEP_MIN, arrayMode, lander, req, terrainCase) : []),
+    [selSeries, landIdx, missionSteps, arrayMode, lander, req, terrainCase]
+  );
+  const limiting = useMemo(() => limitingCase(stress), [stress]);
+  /** Changes that make the plan pass every tested case. */
+  const robust = useMemo(() => {
+    if (!selSeries.length || landIdx + missionSteps > selSeries.length) return null;
+    const lastIdx = Math.min(YEAR_N - 1, selSeries.length - missionSteps);
+    const o = robustOptions(selSeries, landIdx, missionSteps, STEP_MIN, arrayMode, lander, req, terrainCase, lastIdx);
+    // Every alternative must pass all cases, including its own terrain case. The cheap cases
+    // run first; the terrain case (calibrated on that spot) only for those that survive them.
+    const passesAll = (ser: ReturnType<typeof siteSeries>, s: Site) => {
+      const all = (t: TerrainCase | null) => allCasesPass(stressTest(ser, landIdx, missionSteps, STEP_MIN, arrayMode, lander, req, t));
+      return ser.length > 0 && all(null) && all(terrainFor(s));
+    };
+    // other current NASA sites on this exact date with this exact lander
+    const sitesOk = officialSites
+      .filter((s) => s.current !== false && s.id !== selected?.id)
+      .filter((s) => passesAll(series.get(s.id) ?? [], s));
+    // nearby positions, closest first
+    const nearOk = nearbyCandidates.filter((c) => passesAll(c.samples, c.site)).map((c) => c.site).slice(0, 3);
+    return { ...o, landMs: o.landIdx !== null ? selSeries[o.landIdx].t : null, sitesOk, nearOk, nearTested: nearbyCandidates.length };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selSeries, landIdx, missionSteps, arrayMode, lander, req, terrainCase, YEAR_N, officialSites, series, selected, nearbyCandidates, terrainCache]);
 
   /** First landing time, from now on, at which this lander survives the mission at the selected site. */
   const nextSurvivable = useMemo(() => {
     if (!selSeries.length) return null;
-    const stride = Math.round(360 / STEP_MIN); // 6-hour steps
-    for (let i = landIdx; i + missionSteps <= selSeries.length; i += stride) {
-      if (simulateMission(selSeries, i, missionSteps, STEP_MIN, arrayMode, lander).survives) return selSeries[i].t;
-    }
-    return null;
-  }, [selSeries, landIdx, missionSteps, arrayMode, lander]);
+    // every half-hour landing is checked, so short viable windows are not skipped
+    const lastIdx = Math.min(YEAR_N - 1, selSeries.length - missionSteps);
+    const i = earliestSurvivable(selSeries, landIdx, lastIdx, missionSteps, STEP_MIN, arrayMode, lander, req);
+    return i === null ? null : selSeries[i].t;
+  }, [selSeries, landIdx, missionSteps, arrayMode, lander, req, YEAR_N]);
+  /** Last landing time the searches can test (the mission must finish inside the modelled data). */
+  const lastLandingMs = selSeries.length > missionSteps ? selSeries[Math.min(YEAR_N - 1, selSeries.length - missionSteps)].t : START_MS;
 
   /** Long-run sunlight at the chosen panel height (18.6-year average). */
   const sunAtHeight = (s: Site) =>
@@ -530,9 +715,10 @@ export default function App() {
     return list.map((s) => ({
       id: s.id,
       name: s.name,
-      values: porkchopRow(series.get(s.id) ?? [], missionSteps, PC_STRIDE, STEP_MIN, arrayMode, lander),
+      // one column per 6 hours of the chosen year; missions may run into the padding
+      values: porkchopRow(series.get(s.id) ?? [], missionSteps, PC_STRIDE, STEP_MIN, arrayMode, lander, req).slice(0, Math.floor((YEAR_N - 1) / PC_STRIDE) + 1),
     }));
-  }, [officialSites, series, missionSteps, PC_STRIDE, arrayMode, lander, showRefs]);
+  }, [officialSites, series, missionSteps, PC_STRIDE, arrayMode, lander, showRefs, req, YEAR_N]);
   /** The current NASA site whose landing dates this lander survives most often. */
   const forgiving = useMemo(() => {
     let best: { site: Site; pct: number } | null = null;
@@ -555,10 +741,10 @@ export default function App() {
       const site = sites.find((s) => s.id === id)!;
       const ser = id === "custom" ? customSeries : series.get(id) ?? [];
       const st = id === "custom" ? customStats : stats.get(id);
-      const run = ser.length ? simulateMission(ser, landIdx, missionSteps, STEP_MIN, arrayMode, lander) : null;
+      const run = ser.length ? simulateMission(ser, landIdx, missionSteps, STEP_MIN, arrayMode, lander, req) : null;
       return { site, ser, st, run, sunFlip: flipAfter(ser, landIdx, "lit"), earthFlip: flipAfter(ser, landIdx, "comm") };
     });
-  }, [compareIds, selected, forgiving, sites, customSeries, customStats, series, stats, landIdx, missionSteps, arrayMode, lander]);
+  }, [compareIds, selected, forgiving, sites, customSeries, customStats, series, stats, landIdx, missionSteps, arrayMode, lander, req]);
   const setCompareAt = (i: number, id: string) =>
     setCompareIds(() => {
       const next = compareRows.map((r) => r.site.id);
@@ -608,10 +794,10 @@ export default function App() {
               </span>
             </div>
             <div className="tm-cell">
-              <span className="tm-k">Radio to Earth</span>
+              <span className="tm-k" title="Geometric: some of Earth's disc is above the skyline. Ground stations and link budget are not modelled.">Earth in view</span>
               <span className={reading.comm ? "tm-v" : "tm-v tm-off"}>
                 <span className={reading.comm ? "sigbars" : "sigbars off"} aria-hidden><i /><i /><i /><i /></span>
-                {reading.comm ? "CONNECTED" : "BLOCKED"}
+                {reading.comm ? "IN VIEW" : "HIDDEN"}
                 <small title="Time until Earth next sets or rises over the terrain here">
                   {earthFlipMs !== null ? `${reading.comm ? "Earthset" : "Earthrise"} in ${fmtIn(earthFlipMs)}` : `${reading.earthElev >= 0 ? "+" : ""}${reading.earthElev.toFixed(1)}°`}
                 </small>
@@ -622,8 +808,8 @@ export default function App() {
               {selLander && missionFits ? (
                 <span className={selLander.survives ? "tm-v" : "tm-v tm-bad"}>
                   <i className={selLander.survives ? "dot dot-ok" : "dot dot-bad"} />
-                  {selLander.survives ? "SURVIVES" : "BATTERY DIES"}
-                  <small>{selLander.survives ? `battery ≥ ${selLander.minSocPct.toFixed(0)}%` : fmtDay(selLander.lostAt!)}</small>
+                  {selLander.survives ? "SURVIVES" : selLander.failure === "earth" ? "NO EARTH" : reservePct ? "RESERVE BREACHED" : "BATTERY DIES"}
+                  <small>{selLander.survives ? `battery ≥ ${selLander.minSocPct.toFixed(0)}%` : fmtDay((selLander.failure === "earth" ? selLander.earthFailAt : selLander.lostAt)!)}</small>
                 </span>
               ) : (
                 <span className="tm-v tm-off"><i className="dot dot-off" />—</span>
@@ -666,6 +852,21 @@ export default function App() {
               <NumIn label="Heaters in the dark" unit="W" value={lander.heaterW ?? 0} min={0} max={2000} step={10}
                 onChange={(v) => setLander({ ...lander, heaterW: v })} />
             </div>
+            <label className="field field-req">
+              <span className="field-k" title="Direct radio needs Earth above the skyline. Choose how long the mission can go without it.">Longest time without Earth in view</span>
+              <select value={maxOutageH ?? ""} onChange={(e) => setMaxOutageH(e.target.value === "" ? null : Number(e.target.value))}>
+                <option value="">No limit (relay or autonomous)</option>
+                {[12, 24, 48, 72, 120, 168].map((h) => (
+                  <option key={h} value={h}>{h < 48 ? `${h} hours` : `${h / 24} days`}</option>
+                ))}
+              </select>
+            </label>
+            <label className="field field-req">
+              <span className="field-k" title="Charge the battery must never fall below, as a share of its usable capacity">Battery reserve to keep</span>
+              <select value={reservePct} onChange={(e) => setReservePct(Number(e.target.value))}>
+                {[0, 10, 20, 30].map((r) => <option key={r} value={r}>{r === 0 ? "None (may run it flat)" : `${r}% of usable charge`}</option>)}
+              </select>
+            </label>
             <div className="field-row field-row-1">
               <div className="field">
                 <span className="field-k">Solar panels</span>
@@ -692,9 +893,9 @@ export default function App() {
             <div className="lander-inputs">
               <NumIn label="Power use" unit="W" value={lander.loadW} min={10} max={2000} step={10}
                 onChange={(v) => setLander({ ...lander, loadW: v })} />
-              <NumIn label="Panel size" unit="m²" value={lander.arrayM2} min={0.5} max={50} step={0.5}
+              <NumIn label="Panel size" unit="m²" value={lander.arrayM2} min={0.1} max={500} step={0.1}
                 onChange={(v) => setLander({ ...lander, arrayM2: v })} />
-              <NumIn label="Battery" unit="kWh" value={lander.batteryWh / 1000} min={1} max={200} step={1}
+              <NumIn label="Battery" unit="kWh" value={+(lander.batteryWh / 1000).toFixed(1)} min={0.1} max={1000} step={0.1}
                 onChange={(v) => setLander({ ...lander, batteryWh: v * 1000 })} />
             </div>
             </div>
@@ -782,6 +983,7 @@ export default function App() {
           <div className="stage-map">
             <div className="segmented stage-switch" role="group" aria-label="Map or 3D view">
               <button className={stageView === "map" ? "seg seg-on" : "seg"} onClick={() => setStageView("map")} aria-pressed={stageView === "map"}>Map</button>
+              <button className={stageView === "finder" ? "seg seg-on" : "seg"} onClick={() => setStageView("finder")} aria-pressed={stageView === "finder"}>Site finder</button>
               <button className={stageView === "3d" ? "seg seg-on" : "seg"} onClick={() => setStageView("3d")} aria-pressed={stageView === "3d"}>3D terrain</button>
             </div>
             {stageView === "3d" ? (
@@ -819,6 +1021,7 @@ export default function App() {
               custom={customSite && customSite.lat <= -80 ? customSite : null}
               layers={layers}
               elevation={elevation}
+              finder={stageView === "finder" && finderData && finderResult ? { data: finderData, canvas: finderResult.canvas, limits } : null}
             >
               {selected && selected.lat > -80 && (
                 <div className="offmap" role="note">
@@ -828,13 +1031,56 @@ export default function App() {
               )}
               <div className="stage-hud">
                 <span className="hud-title">Lunar south pole</span>
-                <span>80°S to 90°S</span>
-                <span>{shadow ? `${(shadow.frac * 100).toFixed(0)}% in sunlight` : "Loading"}</span>
+                {stageView === "finder" ? (
+                  <>
+                    <span>85°S to 90°S</span>
+                    <span>NASA LOLA maps</span>
+                  </>
+                ) : (
+                  <>
+                    <span>80°S to 90°S</span>
+                    <span>{shadow ? `${(shadow.frac * 100).toFixed(0)}% in sunlight` : "Loading"}</span>
+                  </>
+                )}
               </div>
             </MapView>
             )}
           </div>
-          <MapStatusBar layers={layers} onLayers={setLayers} />
+          <MapStatusBar layers={layers} onLayers={setLayers} finderMode={stageView === "finder"} />
+          {stageView === "finder" && (
+            <section className="finder-panel" aria-label="Site finder">
+              <div className="fp-head">
+                <span className="fp-title">Where could you land?</span>
+                <span className="fp-stat">
+                  {finderErr ? finderErr : !finderResult ? "Loading NASA's 85°S maps…" : (
+                    <><b>{finderResult.passCells.toLocaleString("en-GB")}</b> of {finderResult.valid.toLocaleString("en-GB")} cells ({(finderResult.cellKm * 1000).toFixed(0)} m) contain a 60 m spot that passes</>
+                  )}
+                </span>
+              </div>
+              <div className="fp-sliders">
+                <FinderSlider label="Sunlight at least" unit="%" min={0} max={95} step={5} value={limits.sunPct} onChange={(v) => setLimits({ ...limits, sunPct: v })} />
+                <FinderSlider label="Earth in view at least" unit="%" min={0} max={95} step={5} value={limits.earthPct} onChange={(v) => setLimits({ ...limits, earthPct: v })} />
+                <FinderSlider label="Slope at most" unit="°" min={1} max={20} step={1} value={limits.slopeDeg} onChange={(v) => setLimits({ ...limits, slopeDeg: v })} />
+                <FinderSlider label="Permanent shadow within" unit=" km" min={0.5} max={12.5} step={0.5} value={limits.shadowKm ?? 12.5}
+                  onChange={(v) => setLimits({ ...limits, shadowKm: v })} off={limits.shadowKm === null} onToggle={() => setLimits({ ...limits, shadowKm: limits.shadowKm === null ? 5 : null })} />
+              </div>
+              {finderResult && finderResult.top.length > 0 && (
+                <div className="fp-top">
+                  <span className="fp-top-k">Best passing spots, 8 km apart · click to check</span>
+                  {finderResult.top.map((t, i) => (
+                    <button key={i} className="fp-spot" onClick={() => checkCoords(t.lat, t.lon, "typed")}
+                            title={`This 60 m spot: sunlight ${t.sunPct}%, Earth in view ${t.earthPct}%, slope ${t.slopeDeg.toFixed(1)}°, permanent shadow (possible ice) ${t.shadowKm !== null ? `${t.shadowKm.toFixed(1)} km` : "over 12.7 km"} away`}>
+                      <b>{Math.abs(t.lat).toFixed(2)}°S {t.lon.toFixed(1)}°E</b> <span>☀ {t.sunPct}% · ⊕ {t.earthPct}%</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {finderResult && finderResult.top.length === 0 && <p className="fineprint">Nothing passes all four limits. Relax one of them.</p>}
+              <p className="fineprint fp-note" title="Each ~600 m cell keeps three 60 m spots from NASA's LOLA products (PGDA 69: 18.6-year Sun and Earth visibility, permanent shadow): the sunniest, the sunniest under 8° slope and the sunniest under 4°. A cell is green when one of them meets every limit. Permanent shadow is where ice can survive; it does not prove ice is there.">
+                Built from NASA's LOLA sunlight, Earth and permanent-shadow maps at 60 m; slope from 80 m terrain, which cannot prove a lander footprint is safe. A spot opens at its exact position for the full check.
+              </p>
+            </section>
+          )}
         </main>
 
         {/* ================= RIGHT RAIL: the selected site ================= */}
@@ -855,38 +1101,73 @@ export default function App() {
               )}
             </h2>
             {selected && <p className="blurb">{selected.blurb}</p>}
+            {sameSpotNote && selected?.id !== "custom" && <p className="same-spot">{sameSpotNote}</p>}
             {selected && <NasaTools lat={selected.lat} lon={selected.lon} />}
           </section>
 
           <section className={verdictClass} id="lander-card" aria-live="polite" data-tour-focus={tourStep === 1 || tourStep === 2}>
             <div className="vh-top">
               <span className="vh-k">Land on {fmtDay(currentMs)}, stay {missionDays} days</span>
+              {selected?.id === "custom" && selected.terrain && <span className="vh-prelim" title="Coarse 600 m terrain: an early estimate">Preliminary</span>}
             </div>
             <div className="vh-main">
               {!selLander ? "…" : !missionFits
                 ? "Stay is too long for this date"
-                : selLander.survives ? "SURVIVES" : "BATTERY DIES"}
+                : selLander.survives ? "SURVIVES" : selLander.failure === "earth" ? "EARTH OUT OF VIEW TOO LONG" : reservePct ? "RESERVE BREACHED" : "BATTERY DIES"}
             </div>
             <div className="vh-sub">
               {selLander && missionFits && (selLander.survives
-                ? selLander.minSocPct >= 99.5 ? "The battery stays full the whole time." : `The battery never drops below ${selLander.minSocPct.toFixed(0)}% of its usable charge.`
-                : `It runs out of power in the dark on ${fmtDate(selLander.lostAt!)}.`)}
+                ? selLander.minSocPct >= 99.5 ? "The battery stays full the whole time."
+                  : selLander.minSocPct - reservePct < 1 ? `Only just: the battery bottoms out at ${selLander.minSocPct.toFixed(1)}% of its usable charge${reservePct ? `, right at your ${reservePct}% reserve` : ""}. No margin.`
+                  : `The battery never drops below ${selLander.minSocPct.toFixed(0)}% of its usable charge${reservePct ? ` (reserve ${reservePct}%)` : ""}.`
+                : selLander.failure === "earth"
+                  ? `Earth stays below the skyline for more than ${maxOutageH} hours from ${fmtDate(selLander.earthFailAt! - (maxOutageH ?? 0) * 3600000)}; your plan allows ${maxOutageH} h without direct contact.`
+                  : reservePct
+                    ? `The battery falls to your ${reservePct}% reserve on ${fmtDate(selLander.lostAt!)}.`
+                    : `It runs out of power in the dark on ${fmtDate(selLander.lostAt!)}.`)}
+              {selLander && missionFits && selLander.survives && maxOutageH !== null && ` Longest time without Earth: ${selLander.longestEarthOutageH.toFixed(0)} h (limit ${maxOutageH} h).`}
               {selLander && !missionFits && `We model one calendar year at a time, to ${win.endLabel}. Land before ${fmtDay(START_MS + (DAYS - missionDays) * 86400000)}, or pick ${year + 1}.`}
             </div>
             {sizing && selLander && missionFits && (
-              <div className="sizing">
-                <span className="sizing-k">{selLander.survives ? "Smallest that still survives this landing" : "What this landing would need"}</span>
-                <span>
-                  Battery{" "}
-                  <b>{sizing.batteryWh !== null ? fmtEnergy(sizing.batteryWh) : "more than 1,000 kWh"}</b>{" "}
-                  <i>(you have {fmtEnergy(lander.batteryWh)})</i>
-                </span>
-                <span>
-                  {selLander.survives ? "Panels" : "or panels"}{" "}
-                  <b>{sizing.arrayM2 !== null ? `${sizing.arrayM2 < 10 ? sizing.arrayM2.toFixed(1) : sizing.arrayM2.toFixed(0)} m²` : "no size is enough"}</b>{" "}
-                  <i>{sizing.arrayM2 !== null ? `(you have ${lander.arrayM2} m²)` : "(the darkness outlasts the battery)"}</i>
-                </span>
-              </div>
+              selLander.failure === "earth" ? (
+                <div className="sizing">
+                  <span className="sizing-k">What would fix it</span>
+                  <span>No battery or panel size fixes this: it is about where Earth is. Land at another time or site, allow a longer gap, or plan for a relay.</span>
+                </div>
+              ) : (
+                <div className="sizing">
+                  <span className="sizing-k">{selLander.survives ? "How much margin you have (change one thing at a time)" : "Either of these fixes this landing (change one thing)"}</span>
+                  <SizingOption
+                    label={selLander.survives ? "Smallest battery that still works" : "Battery"}
+                    value={sizing.batteryWh}
+                    current={lander.batteryWh}
+                    show={(v) => fmtEnergy(v)}
+                    none="more than 1,000 kWh"
+                    onApply={(v) => setLander({ ...lander, batteryWh: v })}
+                  />
+                  <SizingOption
+                    label={selLander.survives ? "Smallest panels that still work" : "Panels"}
+                    value={sizing.arrayM2}
+                    current={lander.arrayM2}
+                    show={(v) => `${v.toFixed(1)} m²`}
+                    none="no size is enough: the darkness outlasts the battery"
+                    onApply={(v) => setLander({ ...lander, arrayM2: v })}
+                  />
+                </div>
+              )
+            )}
+            {stress.length > 1 && selLander && missionFits && (
+              <StressCard
+                cases={stress}
+                limiting={limiting}
+                robust={robust}
+                lander={lander}
+                landMs={currentMs}
+                onLand={(ms) => setCurrentMs(ms)}
+                onLander={(l) => setLander(l)}
+                onSite={(id) => setSelectedId(id)}
+                onNear={(site) => { setSameSpotNote(null); setCustomSite(site); setSelectedId("custom"); }}
+              />
             )}
             {selLander && missionFits && selLander.soc.length > 1 && (
               <SocSpark soc={selLander.soc} lostFrac={selLander.lostAt !== null ? (selLander.lostAt - currentMs) / (missionDays * DAY_MS) : null} startMs={currentMs} days={missionDays} />
@@ -897,7 +1178,7 @@ export default function App() {
                   Earliest landing it survives → {fmtDate(nextSurvivable)}
                 </button>
               ) : (
-                <p className="fineprint">No landing date in {year} lets this lander survive {missionDays} days here. Try a bigger battery or more panels.</p>
+                <p className="fineprint">No landing from {fmtDay(currentMs)} to {fmtDate(lastLandingMs)} (checked every 30 minutes) meets every requirement for {missionDays} days here. Try a bigger battery, more panels, another site or a looser Earth requirement.</p>
               )
             )}
             {selLander && missionFits && selected && (
@@ -909,7 +1190,7 @@ export default function App() {
                     missionCsv({
                       site: selected, samples: selSeries, startIdx: landIdx, steps: missionSteps, soc: selLander.soc,
                       mode: arrayMode, spec: lander, heightM: selected.id === "custom" ? 0 : panelHeight,
-                      survives: selLander.survives, lostAt: selLander.lostAt,
+                      result: selLander, req, stress,
                     })
                   )
                 }
@@ -937,7 +1218,7 @@ export default function App() {
               <div className="now-cell">
                 <span className="now-k">Earth elevation</span>
                 <span className={reading.comm ? "now-v is-comm" : "now-v is-off"}>{reading.earthElev >= 0 ? "+" : ""}{reading.earthElev.toFixed(1)}°</span>
-                <span className="now-h">{reading.comm ? "radio link open" : selected?.terrain === false ? "below a flat horizon" : `hills here reach ${reading.earthHorizon.toFixed(1)}°`}</span>
+                <span className="now-h">{reading.comm ? "above the skyline" : selected?.terrain === false ? "below a flat horizon" : `hills here reach ${reading.earthHorizon.toFixed(1)}°`}</span>
               </div>
               <div className="now-cell">
                 <span className="now-k">{reading.comm ? "Earthset in" : "Earthrise in"}</span>
@@ -968,7 +1249,7 @@ export default function App() {
                   className={rightTab === t ? "tab tab-on" : "tab"}
                   onClick={() => setRightTab(t)}
                 >
-                  {{ evidence: "Why trust this", sky: "Sky", power: "Power", comms: "Radio" }[t]}
+                  {{ evidence: "Why trust this", sky: "Sky", power: "Power", comms: "Earth" }[t]}
                 </button>
               ))}
             </div>
@@ -1004,8 +1285,8 @@ export default function App() {
                   <Stat label="Elevation" value={selected ? `${selected.elevationM.toLocaleString("en-GB")} m` : "…"} hint="above the Moon's mean radius" />
                 </div>
                 {windows.length > 0 && (
-                  <button className="cta cta-quiet" onClick={() => setCurrentMs(windows[0].start)}>
-                    Sunniest time to land for {missionDays} days → {fmtDay(windows[0].start)}
+                  <button className="cta cta-quiet" onClick={() => setCurrentMs([...windows].sort((a, b) => b.minSocPct - a.minSocPct)[0].start)}>
+                    Safest landing for this lander → {fmtDay([...windows].sort((a, b) => b.minSocPct - a.minSocPct)[0].start)}
                   </button>
                 )}
                 {selected?.longRun && (
@@ -1028,7 +1309,7 @@ export default function App() {
                   sunLit={reading.lit}
                   earthComm={reading.comm}
                 />
-                <MoonFacts site={selected} series={selSeries} year={year} />
+                <MoonFacts site={selected} series={selSeries.slice(0, YEAR_N)} year={year} />
               </div>
             )}
 
@@ -1089,7 +1370,7 @@ export default function App() {
                   ))}
                   {nextComms.length === 0 && <li className="fineprint">No windows in this range.</li>}
                 </ul>
-                <p className="fineprint">Next times you can talk to Earth, and for how long. {comms.length} such windows in {year}.</p>
+                <p className="fineprint">Next times Earth is above the skyline, and for how long ({comms.length} in {year}). Direct radio needs this; ground-station schedules and link budget are not modelled.</p>
               </div>
             )}
           </section>
@@ -1201,7 +1482,7 @@ export default function App() {
                       {customSite && <option value="custom">{customSite.name}</option>}
                     </select>
                     <div className="cmp-strip">
-                      {r.ser.length > 1 && <TimelineStrip samples={r.ser} currentMs={currentMs} onScrub={setCurrentMs} height={34} />}
+                      {r.ser.length > 1 && <TimelineStrip samples={r.ser.slice(0, YEAR_N)} currentMs={currentMs} onScrub={setCurrentMs} height={34} />}
                     </div>
                     <span className={!r.run || !missionFits ? "cmp-verdict" : r.run.survives ? "cmp-verdict ok" : "cmp-verdict bad"}
                           title={r.run && missionFits ? (r.run.survives ? `Survives; battery never below ${r.run.minSocPct.toFixed(0)}% of usable charge` : `Battery dies ${fmtDate(r.run.lostAt!)}`) : ""}>
@@ -1222,17 +1503,18 @@ export default function App() {
           ) : dockTab === "timeline" ? (
             <>
               {selSeries.length > 1 && (
-                <TimelineStrip samples={selSeries} currentMs={currentMs} onScrub={setCurrentMs} />
+                <TimelineStrip samples={yearSeries} currentMs={currentMs} onScrub={setCurrentMs} />
               )}
               <div className="windows">
-                <span className="field-k">Best {missionDays}-day landing windows</span>
+                <span className="field-k">Best landing dates for this lander ({missionDays} days)</span>
                 {windows.map((w) => (
-                  <button key={w.start} className="window" onClick={() => setCurrentMs(w.start)}>
-                    <span className="w-date">{fmtDay(w.start)}</span>
-                    <span className="w-meta">{w.illumPct.toFixed(0)}% sunlight · {w.commPct.toFixed(0)}% radio</span>
+                  <button key={w.start} className="window" onClick={() => setCurrentMs(w.start)}
+                          title="Opens exactly this landing: same site, lander and requirements">
+                    <span className="w-date">{fmtDay(w.start)} {new Date(w.start).toISOString().slice(11, 16)}</span>
+                    <span className="w-meta">survives, battery ≥ {w.minSocPct.toFixed(0)}% · sun {w.illumPct.toFixed(0)}% · Earth {w.commPct.toFixed(0)}%</span>
                   </button>
                 ))}
-                {windows.length === 0 && <span className="fineprint">No landing window that long fits in {year}.</span>}
+                {windows.length === 0 && <span className="fineprint">No landing in {year} meets every requirement for this lander here.</span>}
               </div>
             </>
           ) : (
@@ -1247,7 +1529,7 @@ export default function App() {
                   onPick={(id, ms) => { setSelectedId(id); setCurrentMs(ms); }}
                 />
               )}
-              <p className="fineprint">Each row is a landing site, each column a landing date (every 6 hours). Green means your lander survives the whole stay; red means its battery dies. The number on the right is the share of landing dates it survives at that site. Click any square to land there.</p>
+              <p className="fineprint">Each row is a landing site, each column a landing date (every 6 hours). Green means your lander survives the whole stay; red means it fails a requirement (the battery reaches its limit, or Earth stays hidden too long). The number on the right is the share of landing dates it survives at that site. Click any square to land there.</p>
             </>
           )}
         </div>
@@ -1312,7 +1594,11 @@ export default function App() {
               recomputed for the whole pole on every frame. Clicked points use a ~600 m grid. The 3D view
               draws a 120 × 120 km block of the same ~600 m grid around the site, lowered for the Moon's
               curvature and lit from the computed Sun direction; its shadows come from that block only, so
-              the sunlit verdict always uses the full 150 km horizon.
+              the sunlit verdict always uses the full 150 km horizon. The site finder covers 85–90°S using
+              only NASA's LOLA products: for every ~300 m cell it takes the sunniest 60 m spot in the 18.6-year
+              sunlight map (PGDA product 69), the Earth-visibility value at that same spot, the slope there from
+              the 80 m terrain, and the distance to the nearest permanently shadowed pixel in NASA's LPSR map, then
+              tests them against the limits you set (<code>npm run finder</code> rebuilds it).
             </p>
             <p>
               Sites: NASA's nine Artemis III candidate regions (October 2024), plus the 2022 regions since
@@ -1392,10 +1678,19 @@ export default function App() {
               treated as normal-incidence; a flat array uses the cosine of solar zenith; upright panels are split
               equally over four vertical faces (N, E, S, W), so a square metre of total panel gives 25–35% of a
               Sun-facing one. The lander check steps a battery (starting full, usable to 80% depth of discharge)
-              through every 30-minute sample of the mission: it charges while the Sun clears the horizon, powers a
-              constant load, and powers the heaters only while the lander is in shadow. A lander whose battery
-              empties is counted as lost. The smallest battery and panel area that survive a landing are found by
-              bisection, since survival only improves as either grows.
+              through every 30-minute step of the mission: panels deliver power in proportion to the visible share
+              of the solar disc, a constant load runs throughout, and heaters run while less than half the disc
+              is up. A lander whose battery empties is lost (the moment is interpolated within the step). An
+              optional requirement limits how long Earth may be out of view; it is geometric visibility only, not
+              ground-station scheduling or a link budget. The same evaluator drives the verdict, the site ranking,
+              the landing dates, the date grid, the stress test and the exports. The smallest battery and panel area that survive a landing are found by
+              bisection, since survival only improves as either grows, then rounded up to the input step and re-checked,
+              so the value shown passes when applied. The stress test reruns the same landing 6 hours, 1 day and
+              3 days late, with 20% less panel output, 20% more load, a battery 80% charged at landing, and hills
+              raised until the year's sunlight there falls by our typical error against NASA's map (6.8 points);
+              these are sensitivity cases, not probabilities. Every alternative it offers (later landing, battery,
+              panels, other sites, positions 1–2 km away) is rerun on all of them, with the terrain case
+              calibrated on that spot.
             </p>
             <p className="limits">
               <b>Limitations.</b> 80 m terrain resolution (sites on ridges narrower than that are uncertain,
@@ -1406,7 +1701,7 @@ export default function App() {
               19 km in the live map); raised panels (2 m and 10 m) are modelled at the named sites only, and points
               you click on the map are checked at ground level; lunar orientation from the IAU 2015
               series with its periodic libration terms, not a numerical libration ephemeris; first-order
-              power model with no thermal, dust or heater loads. The range shown with each long-run figure
+              power model with no thermal model or dust (heaters only as the constant load you set). The range shown with each long-run figure
               is the spread across horizon conventions. A planning aid for comparison, not a
               flight-qualified analysis.
             </p>
@@ -1442,7 +1737,7 @@ export default function App() {
               setDockTab("timeline");
               document.getElementById("lander-card")?.scrollIntoView({ behavior: "smooth", block: "center" });
             } else if (n === 2) {
-              setCurrentMs(Date.UTC(2027, 1, 14, 12));
+              setCurrentMs(Date.UTC(2027, 1, 16));
               document.getElementById("lander-card")?.scrollIntoView({ behavior: "smooth", block: "center" });
             } else if (n === 3) {
               setDockTab("porkchop");
@@ -1478,8 +1773,8 @@ const TOUR = [
     next: "Land ten days later",
   },
   {
-    title: "Land on 14 February: it survives",
-    body: "Same lander, same ridge, ten days later. Timing, not just location, decides survival, and SUNLOCK finds the window for you.",
+    title: "Land on 16 February: it survives",
+    body: "Same lander, same ridge, twelve days later: the battery never drops below 44%. Land on 14 February and it only just scrapes through. Timing, not just location, decides survival, and SUNLOCK finds the window for you.",
     next: "See every region and date",
   },
   {
@@ -1754,6 +2049,118 @@ function MoonFacts({ site, series, year }: { site: Site; series: { sunElev: numb
   );
 }
 
+/** One sizing alternative, applied with one click; the value shown has already been checked. */
+function SizingOption({ label, value, current, show, none, onApply }: {
+  label: string; value: number | null; current: number; show: (v: number) => string; none: string; onApply: (v: number) => void;
+}) {
+  return (
+    <span className="sz-opt">
+      <span>
+        {label} <b>{value !== null ? show(value) : none}</b>
+        {value !== null && <i> (you have {show(current)})</i>}
+      </span>
+      {value !== null && Math.abs(value - current) > 1e-9 && (
+        <button className="sz-apply" onClick={() => onApply(value)}>Use {show(value)}</button>
+      )}
+    </span>
+  );
+}
+
+/**
+ * The same landing under adverse assumptions: which case breaks it first, and the single
+ * changes (later landing, bigger battery, more panels, another site) that pass every case.
+ */
+function StressCard({ cases, limiting, robust, lander, landMs, onLand, onLander, onSite, onNear }: {
+  cases: StressCase[];
+  limiting: StressCase | null;
+  robust: { landMs: number | null; batteryWh: number | null; arrayM2: number | null; sitesOk: Site[]; nearOk: Site[]; nearTested: number } | null;
+  lander: LanderSpec;
+  landMs: number;
+  onLand: (ms: number) => void;
+  onLander: (l: LanderSpec) => void;
+  onSite: (id: string) => void;
+  onNear: (site: Site) => void;
+}) {
+  const tested = cases.filter((c) => c.result);
+  const passing = tested.filter((c) => c.result!.survives).length;
+  const unknown = cases.length - tested.length;
+  const why = (r: MissionResult) => (r.failure === "earth" ? `Earth hidden too long from ${fmtDay(r.earthFailAt!)}` : `battery limit ${fmtDay(r.lostAt!)}`);
+  return (
+    <div className="stress">
+      <span className="sizing-k">What could break this plan · {passing} of {cases.length} cases pass{unknown ? ` · ${unknown} unknown` : ""}</span>
+      <ul>
+        {cases.map((c) => (
+          <li key={c.id} className={!c.result ? "na" : c.result.survives ? "ok" : "bad"}>
+            <span>{c.label}</span>
+            <b>
+              {!c.result ? "? unknown" : c.result.survives
+                ? `✓ ${c.result.minSocPct.toFixed(0)}%`
+                : c.result.failure === "earth" ? "✗ Earth" : `✗ ${fmtDay(c.result.lostAt!)}`}
+            </b>
+          </li>
+        ))}
+      </ul>
+      {limiting && (
+        <p className="stress-limit">
+          <b>Limiting condition:</b> {limiting.label.toLowerCase()}: {why(limiting.result!)}.
+        </p>
+      )}
+      {unknown > 0 && <p className="stress-limit">{unknown} case{unknown > 1 ? "s run" : " runs"} past the modelled data, so this plan is not shown as passing every case.</p>}
+      {robust && passing < cases.length && (
+        <div className="robust">
+          <span className="sizing-k">Single changes that pass all {cases.length} cases</span>
+          <span className="sz-opt">
+            <span>Land later: <b>{robust.landMs !== null ? fmtDate(robust.landMs) : "no time this year"}</b></span>
+            {robust.landMs !== null && robust.landMs !== landMs && <button className="sz-apply" onClick={() => onLand(robust.landMs!)}>Land then</button>}
+          </span>
+          <span className="sz-opt">
+            <span>Battery: <b>{robust.batteryWh !== null ? fmtEnergy(robust.batteryWh) : "no size is enough"}</b></span>
+            {robust.batteryWh !== null && <button className="sz-apply" onClick={() => onLander({ ...lander, batteryWh: robust.batteryWh! })}>Use {fmtEnergy(robust.batteryWh)}</button>}
+          </span>
+          <span className="sz-opt">
+            <span>Panels: <b>{robust.arrayM2 !== null ? `${robust.arrayM2.toFixed(1)} m²` : "no size is enough"}</b></span>
+            {robust.arrayM2 !== null && <button className="sz-apply" onClick={() => onLander({ ...lander, arrayM2: robust.arrayM2! })}>Use {robust.arrayM2.toFixed(1)} m²</button>}
+          </span>
+          <span className="sz-opt sz-sites">
+            <span>Other NASA sites on this date:</span>
+            {robust.sitesOk.length ? robust.sitesOk.map((s) => (
+              <button key={s.id} className="sz-apply" onClick={() => onSite(s.id)}>{s.name}</button>
+            )) : <b>none</b>}
+          </span>
+          {robust.nearTested > 0 && (
+            <span className="sz-opt sz-sites">
+              <span>Nearby, 1–2 km away:</span>
+              {robust.nearOk.length ? robust.nearOk.map((s) => (
+                <button key={s.name} className="sz-apply" onClick={() => onNear(s)} title={s.blurb}>{s.name.replace(/ of .*$/, "")}</button>
+              )) : <b>none of {robust.nearTested} tested positions</b>}
+            </span>
+          )}
+          <span className="stress-note">
+            Every alternative is run on all {cases.length} cases, with its terrain case calibrated on that spot.
+            {robust.nearTested > 0 && " Nearby skylines are preliminary (this site's skyline adjusted by our ~600 m grid); slope there is not checked."}
+          </span>
+        </div>
+      )}
+      <span className="stress-note">Sensitivity cases we chose, not probabilities. % = lowest battery charge.</span>
+    </div>
+  );
+}
+
+function FinderSlider({ label, unit, min, max, step, value, onChange, off, onToggle }: {
+  label: string; unit: string; min: number; max: number; step: number; value: number; onChange: (v: number) => void;
+  off?: boolean; onToggle?: () => void;
+}) {
+  return (
+    <label className={off ? "fp-slider is-off" : "fp-slider"}>
+      <span className="fp-k">
+        {onToggle && <input type="checkbox" checked={!off} onChange={onToggle} aria-label={`Use the ${label.toLowerCase()} limit`} />}
+        {label} <b>{off ? "any" : `${value}${unit}`}</b>
+      </span>
+      <input type="range" min={min} max={max} step={step} value={value} disabled={off} onChange={(e) => onChange(Number(e.target.value))} />
+    </label>
+  );
+}
+
 /** Type a latitude and longitude to check any spot on the Moon. */
 function CoordForm({ onCheck, terrainReady }: { onCheck: (lat: number, lon: number) => boolean; terrainReady: boolean }) {
   const [lat, setLat] = useState("-89.5");
@@ -1835,7 +2242,7 @@ function SocSpark({ soc, lostFrac, startMs, days }: { soc: Float32Array; lostFra
  */
 function MissionBrief(p: {
   site: Site; landMs: number; days: number; spec: LanderSpec; mode: ArrayMode; heightM: number;
-  run: { survives: boolean; lostAt: number | null; minSocPct: number; soc: Float32Array };
+  run: MissionResult;
   sizing: { batteryWh: number | null; arrayM2: number | null } | null; next: number | null;
   reading: { sunElev: number; sunAz: number; lit: boolean; earthElev: number; earthAz: number; comm: boolean };
   sunFlipMs: number | null; earthFlipMs: number | null;
@@ -1861,8 +2268,8 @@ function MissionBrief(p: {
           </div>
         </div>
         <div className={run.survives ? "brief-verdict ok" : "brief-verdict bad"}>
-          {run.survives ? "SURVIVES" : "BATTERY DIES"}
-          <span>{run.survives ? `lowest charge ${run.minSocPct.toFixed(0)}% of usable` : `lost ${fmtDate(run.lostAt!)}`}</span>
+          {run.survives ? "SURVIVES" : run.failure === "earth" ? "EARTH OUT OF VIEW TOO LONG" : "BATTERY DIES"}
+          <span>{run.survives ? `lowest charge ${run.minSocPct.toFixed(1)}% of usable` : run.failure === "earth" ? `Earth limit exceeded ${fmtDate(run.earthFailAt!)}` : `lost ${fmtDate(run.lostAt!)}`}</span>
         </div>
       </header>
 
@@ -1880,9 +2287,10 @@ function MissionBrief(p: {
         <table>
           <caption>Result</caption>
           <tbody>
-            {row("Verdict", run.survives ? `Survives; battery never below ${run.minSocPct.toFixed(0)}% of usable charge` : `Battery dies ${fmtDate(run.lostAt!)}`)}
-            {p.sizing && row(run.survives ? "Smallest battery that works" : "Battery needed", p.sizing.batteryWh !== null ? fmtEnergy(p.sizing.batteryWh) : "more than 1,000 kWh")}
-            {p.sizing && row(run.survives ? "Smallest panels that work" : "Or panels needed", p.sizing.arrayM2 !== null ? `${p.sizing.arrayM2.toFixed(1)} m²` : "no size is enough")}
+            {row("Verdict", run.survives ? `Survives; battery never below ${run.minSocPct.toFixed(1)}% of usable charge` : run.failure === "earth" ? `Fails: Earth out of view longer than allowed, from ${fmtDate(run.earthFailAt!)}` : `Battery reaches its limit ${fmtDate(run.lostAt!)}`)}
+            {row("Longest time without Earth", `${run.longestEarthOutageH.toFixed(0)} h`)}
+            {p.sizing && run.failure !== "earth" && row(run.survives ? "Smallest battery that works (panels unchanged)" : "Battery needed (panels unchanged)", p.sizing.batteryWh !== null ? fmtEnergy(p.sizing.batteryWh) : "more than 1,000 kWh")}
+            {p.sizing && run.failure !== "earth" && row(run.survives ? "Smallest panels that work (battery unchanged)" : "Or panels needed (battery unchanged)", p.sizing.arrayM2 !== null ? `${p.sizing.arrayM2.toFixed(1)} m²` : "no size is enough")}
             {!run.survives && row("Earliest landing that survives", p.next !== null ? fmtDate(p.next) : `none in ${p.year}`)}
           </tbody>
         </table>
@@ -1927,27 +2335,51 @@ function MissionBrief(p: {
 
 /** One row per 30-minute step of the mission, for anyone who wants to check our numbers. */
 function missionCsv(o: {
-  site: Site; samples: { t: number; lit: boolean; comm: boolean; sunElev: number; sunAz?: number; earthElev: number }[];
+  site: Site; samples: { t: number; lit: boolean; comm: boolean; sunElev: number; sunAz?: number; sunFrac?: number; earthElev: number }[];
   startIdx: number; steps: number; soc: Float32Array; mode: ArrayMode; spec: LanderSpec; heightM: number;
-  survives: boolean; lostAt: number | null;
+  result: MissionResult; req: MissionRequirements; stress: StressCase[];
 }) {
-  const { site, spec } = o;
+  const { site, spec, result: r, req } = o;
+  const iso = (ms: number | null) => (ms === null ? "" : new Date(ms).toISOString());
+  const verdict = r.survives
+    ? "survives"
+    : r.failure === "earth"
+      ? `fails: Earth hidden longer than ${req.maxEarthOutageH} h,from ${iso(r.earthFailAt)}`
+      : r.failure === "battery"
+        ? `fails: battery reaches ${req.reservePct ? `the ${req.reservePct}% reserve` : "zero"},at ${iso(r.lostAt)}`
+        : "unknown: the mission runs past the modelled data";
+  const caseCell = (c: StressCase) =>
+    !c.result ? "unknown" : c.result.survives ? `pass min ${c.result.minSocPct.toFixed(0)}%` : c.result.failure === "earth" ? `fail Earth ${iso(c.result.earthFailAt)}` : `fail battery ${iso(c.result.lostAt)}`;
   const head = [
     `# SUNLOCK mission export`,
     `# site,${site.name.replace(/,/g, " ")},lat ${site.lat},lon ${site.lon}${site.publishedSite ? `,published site ${site.publishedSite}` : ""}`,
     `# lander,load ${spec.loadW} W,panels ${spec.arrayM2} m2 (${{ tracking: "face Sun", vertical: "upright on four sides", horizontal: "flat" }[o.mode]}),heaters in the dark ${spec.heaterW ?? 0} W,battery ${spec.batteryWh / 1000} kWh,depth of discharge ${spec.dod},panel height ${o.heightM} m`,
-    `# result,${o.survives ? "survives" : `battery dies ${o.lostAt !== null ? new Date(o.lostAt).toISOString() : ""}`}`,
-    `# model,LRO LOLA LDEM_80S_80M horizon + Astronomy Engine; sunlit = any part of the solar disc above the horizon`,
-    `time_utc,sun_elev_deg,sunlit,earth_elev_deg,earth_in_view,panel_power_w,battery_pct_of_usable`,
+    `# requirements,battery charge at landing ${req.initialSocPct ?? 100}%,reserve to keep ${req.reservePct ?? 0}%,longest time without Earth in view ${req.maxEarthOutageH != null ? `${req.maxEarthOutageH} h` : "no limit"}`,
+    `# result,${verdict}`,
+    `# result detail,lowest charge ${r.minSocPct.toFixed(1)}% of usable,longest Earth outage ${r.longestEarthOutageH.toFixed(1)} h`,
+    `# stress cases,${o.stress.filter((c) => c.result?.survives).length} of ${o.stress.length} pass${o.stress.some((c) => !c.result) ? ` (${o.stress.filter((c) => !c.result).length} unknown)` : ""}`,
+    ...o.stress.map((c) => `# stress,${c.label.replace(/,/g, " ")},${caseCell(c)}`),
+    `# horizon,${
+      site.terrain === false
+        ? "edge of the lunar sphere (no terrain data outside 80-90 S)"
+        : site.nearOf
+          ? `nearby position: the named site's LOLA LDEM_80S_80M skyline adjusted by the change on a ~600 m grid (preliminary)`
+          : site.id === "custom"
+          ? "LOLA terrain on a ~600 m grid, 150 km reach (preliminary)"
+          : "LOLA LDEM_80S_80M terrain, 360 azimuths, 150 km reach, curvature included"
+    }`,
+    `# model,Sun and Earth from Astronomy Engine in the IAU 2015 lunar frame (Earth seen from the surface); sunlit = any part of the solar disc above the skyline; panel power uses the visible share of the disc; heaters run while less than half the disc is up; first-order energy model, not a flight analysis`,
+    `# timestamps,start of each 30-minute step; battery_pct is at the end of the step`,
+    `time_utc,sun_elev_deg,sunlit,sun_visible_fraction,earth_elev_deg,earth_in_view,panel_power_w,battery_pct_of_usable`,
   ];
   const rows: string[] = [];
   const end = Math.min(o.samples.length, o.startIdx + o.steps);
   for (let i = o.startIdx; i < end; i++) {
     const s = o.samples[i];
-    const p = arrayPowerPerM2(s.sunElev, s.lit, o.mode, s.sunAz) * spec.arrayM2;
+    const p = arrayPowerPerM2(s.sunElev, s.sunFrac ?? s.lit, o.mode, s.sunAz) * spec.arrayM2;
     rows.push([
       new Date(s.t).toISOString().slice(0, 16) + "Z",
-      s.sunElev.toFixed(3), s.lit ? 1 : 0, s.earthElev.toFixed(3), s.comm ? 1 : 0,
+      s.sunElev.toFixed(3), s.lit ? 1 : 0, (s.sunFrac ?? (s.lit ? 1 : 0)).toFixed(3), s.earthElev.toFixed(3), s.comm ? 1 : 0,
       p.toFixed(1), o.soc[i - o.startIdx].toFixed(1),
     ].join(","));
   }

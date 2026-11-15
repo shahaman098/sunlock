@@ -2,7 +2,8 @@
 // (the single-landing check and the porkchop grid).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { simulateMission, porkchopRow, arrayPowerPerM2, sizeToSurvive } from "../.build/power.js";
+import { simulateMission, porkchopRow, arrayPowerPerM2, sizeToSurvive, stressTest } from "../.build/power.js";
+import { visibleDiscFraction } from "../.build/selene.js";
 
 const STEP_MIN = 30;
 const spec = { loadW: 100, arrayM2: 4, batteryWh: 10000, dod: 0.8 }; // 8000 Wh usable
@@ -20,8 +21,8 @@ test("always dark: lost exactly when usable energy / load hours have passed", ()
   const s = series(48 * 14, () => ({ lit: false, sunElev: -2 }));
   const r = simulateMission(s, 0, s.length, STEP_MIN, "tracking", spec);
   assert.equal(r.survives, false);
-  // 8000 Wh / 100 W = 80 h = sample 159 (0-based) at 30-min steps
-  assert.equal(r.lostAt, 159 * STEP_MIN * 60000);
+  // 8000 Wh / 100 W = exactly 80 h after landing
+  assert.equal(r.lostAt, 80 * 3600000);
 });
 
 test("panel output: no power in shadow, flat panel nearly useless at a 1.5 degree Sun", () => {
@@ -74,18 +75,94 @@ test("survival heaters drain the battery only in the dark", () => {
   // always lit: heaters never switch on
   const lit = series(48 * 3, () => ({ lit: true, sunElev: 1 }));
   assert.ok(simulateMission(lit, 0, lit.length, STEP_MIN, "tracking", { ...spec, heaterW: 500 }).minSocPct > 99.9);
-  // always dark: 100 W load + 60 W heaters empties 8000 Wh in 50 h = sample 99
+  // always dark: 100 W load + 60 W heaters empties 8000 Wh in exactly 50 h
   const dark = series(48 * 3, () => ({ lit: false, sunElev: -2 }));
   const r = simulateMission(dark, 0, dark.length, STEP_MIN, "tracking", { ...spec, heaterW: 60 });
-  assert.equal(r.lostAt, 99 * STEP_MIN * 60000);
+  assert.equal(r.lostAt, 50 * 3600000);
 });
 
 test("sizing: the smallest battery found is the survival threshold", () => {
   // 3 days lit, 4 days dark, repeated: 96 h of darkness at 100 W needs 9600 Wh usable = 12 kWh at 80% DoD
   const s = series(48 * 14, (i) => ((i / 48) % 7 < 3 ? { lit: true, sunElev: 1 } : { lit: false, sunElev: -1 }));
-  const { batteryWh, arrayM2 } = sizeToSurvive(s, 0, s.length, STEP_MIN, "tracking", spec);
-  assert.ok(Math.abs(batteryWh - 12000) / 12000 < 0.01, `battery ${batteryWh}`);
-  assert.equal(simulateMission(s, 0, s.length, STEP_MIN, "tracking", { ...spec, batteryWh: batteryWh * 0.98 }).survives, false);
+  const { batteryWh, thresholdBatteryWh, arrayM2 } = sizeToSurvive(s, 0, s.length, STEP_MIN, "tracking", spec);
+  assert.ok(Math.abs(thresholdBatteryWh - 12000) / 12000 < 0.001, `threshold ${thresholdBatteryWh}`);
+  // exactly 12,000 Wh reaches zero at the very end of the night (lost), so the smallest
+  // typeable value that survives is the next 100 Wh step
+  assert.equal(simulateMission(s, 0, s.length, STEP_MIN, "tracking", { ...spec, batteryWh: 12000 }).survives, false);
+  assert.equal(batteryWh, 12100, "recommended battery is the smallest 100 Wh step that survives");
+  assert.equal(simulateMission(s, 0, s.length, STEP_MIN, "tracking", { ...spec, batteryWh: thresholdBatteryWh * 0.98 }).survives, false);
   // no panel area can carry a 10 kWh battery through a 4-day night
   assert.equal(arrayM2, null);
+});
+
+test("visible solar disc: none, half and full; power rises smoothly as the Sun clears a flat skyline", () => {
+  assert.equal(visibleDiscFraction(-0.3), 0);
+  assert.ok(Math.abs(visibleDiscFraction(0) - 0.5) < 1e-12);
+  assert.equal(visibleDiscFraction(0.3), 1);
+  let prev = -1;
+  for (let h = -0.3; h <= 0.3; h += 0.01) {
+    const p = arrayPowerPerM2(1, visibleDiscFraction(h), "tracking");
+    assert.ok(p >= prev - 1e-9, `power must not fall as the Sun rises (h=${h.toFixed(2)})`);
+    prev = p;
+  }
+  // a sliver of Sun gives a sliver of power, not full output
+  assert.ok(arrayPowerPerM2(1, visibleDiscFraction(-0.25), "tracking") < 0.02 * arrayPowerPerM2(1, 1, "tracking"));
+});
+
+test("every displayed sizing fix passes when applied exactly, and the step below fails", () => {
+  // irregular light: 2.6 days lit, 3.4 days dark
+  const s = series(48 * 14, (i) => ((i / 48) % 6 < 2.6 ? { lit: true, sunElev: 1, sunFrac: 1 } : { lit: false, sunElev: -1, sunFrac: 0 }));
+  const small = { ...spec, batteryWh: 3000, arrayM2: 2 };
+  const z = sizeToSurvive(s, 0, s.length, STEP_MIN, "tracking", small);
+  assert.ok(z.batteryWh !== null);
+  assert.equal(simulateMission(s, 0, s.length, STEP_MIN, "tracking", { ...small, batteryWh: z.batteryWh }).survives, true);
+  assert.equal(simulateMission(s, 0, s.length, STEP_MIN, "tracking", { ...small, batteryWh: z.batteryWh - 100 }).survives, false);
+  if (z.arrayM2 !== null) assert.equal(simulateMission(s, 0, s.length, STEP_MIN, "tracking", { ...small, arrayM2: z.arrayM2 }).survives, true);
+});
+
+test("Earth-outage requirement: a mission with no Earth contact fails only when contact is required", () => {
+  const s = series(48 * 7, () => ({ lit: true, sunElev: 1, sunFrac: 1, comm: false }));
+  const free = simulateMission(s, 0, s.length, STEP_MIN, "tracking", spec, { maxEarthOutageH: null });
+  assert.equal(free.survives, true);
+  const need = simulateMission(s, 0, s.length, STEP_MIN, "tracking", spec, { maxEarthOutageH: 24 });
+  assert.equal(need.survives, false);
+  assert.equal(need.failure, "earth");
+  assert.equal(need.earthFailAt, 24.5 * 3600000);
+});
+
+test("stress test: a marginal plan fails when the battery starts part-charged, and says so", () => {
+  // the dark spell needs 7600 Wh of an 8000 Wh usable battery: fine full, not at 80%
+  const s = series(48 * 10, (i) => (i < 48 * 4 ? { lit: false, sunElev: -1, sunFrac: 0 } : { lit: true, sunElev: 1, sunFrac: 1 }).valueOf())
+    .map((x, i) => (i < 152 ? { ...x, lit: false, sunFrac: 0 } : { ...x, lit: true, sunFrac: 1 }));
+  const cases = stressTest(s, 0, 48 * 5, STEP_MIN, "tracking", spec);
+  const by = Object.fromEntries(cases.map((c) => [c.id, c.result]));
+  assert.equal(by.nominal.survives, true);
+  assert.equal(by.charge.survives, false);
+  assert.equal(by.charge.failure, "battery");
+});
+
+test("battery reserve: falling to the reserve fails, and the sizing answer respects it", () => {
+  const s = series(48 * 14, (i) => ((i / 48) % 7 < 3 ? { lit: true, sunElev: 1, sunFrac: 1 } : { lit: false, sunElev: -1, sunFrac: 0 }));
+  const req = { reservePct: 20 };
+  const z = sizeToSurvive(s, 0, s.length, STEP_MIN, "tracking", spec, req);
+  // 9600 Wh of night must fit in 80% of the usable charge: 12 kWh / 0.8 = 15 kWh, next 100 Wh step
+  assert.equal(z.batteryWh, 15100);
+  const ok = simulateMission(s, 0, s.length, STEP_MIN, "tracking", { ...spec, batteryWh: z.batteryWh }, req);
+  assert.equal(ok.survives, true);
+  assert.ok(ok.minSocPct >= 20);
+  assert.equal(simulateMission(s, 0, s.length, STEP_MIN, "tracking", { ...spec, batteryWh: 15000 }, req).survives, false);
+});
+
+test("robust options: each single change passes every stress case when applied", async () => {
+  const { robustOptions } = await import("../.build/power.js");
+  // a marginal plan: 3.2 days lit, 3.3 days dark, repeating
+  const s = series(48 * 30, (i) => ((i / 48) % 6.5 < 3.2 ? { lit: true, sunElev: 1, sunFrac: 1, comm: true } : { lit: false, sunElev: -1, sunFrac: 0, comm: true }));
+  const steps = 48 * 10, small = { ...spec, batteryWh: 9000 };
+  const base = stressTest(s, 0, steps, STEP_MIN, "tracking", small);
+  assert.ok(base.some((c) => c.result && !c.result.survives), "the plan should be marginal");
+  const o = robustOptions(s, 0, steps, STEP_MIN, "tracking", small);
+  const allPass = (sp, start) => stressTest(s, start, steps, STEP_MIN, "tracking", sp).every((c) => c.result !== null && c.result.survives);
+  assert.ok(o.batteryWh !== null && allPass({ ...small, batteryWh: o.batteryWh }, 0));
+  assert.equal(allPass({ ...small, batteryWh: o.batteryWh - 100 }, 0), false);
+  if (o.landIdx !== null) assert.ok(allPass(small, o.landIdx));
 });

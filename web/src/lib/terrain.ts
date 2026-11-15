@@ -90,26 +90,31 @@ export function customHorizon(grid: ElevationGrid, lat: number, lon: number) {
   const p = projectToGrid(lat, lon);
   const gx = (p.x / GRID) * size;
   const gy = (p.y / GRID) * size;
-  const idx = (x: number, y: number) => {
-    const xi = Math.round(x), yi = Math.round(y);
-    if (xi < 0 || yi < 0 || xi >= size || yi >= size) return null;
-    return data[yi * size + xi];
+  // bilinear sampling of the coarse grid (null outside it)
+  const at = (x: number, y: number) => {
+    if (x < 0 || y < 0 || x > size - 1.001 || y > size - 1.001) return null;
+    const x0 = Math.floor(x), y0 = Math.floor(y), fx = x - x0, fy = y - y0;
+    const a = data[y0 * size + x0], b = data[y0 * size + x0 + 1], c = data[(y0 + 1) * size + x0], d = data[(y0 + 1) * size + x0 + 1];
+    return (a * (1 - fx) + b * fx) * (1 - fy) + (c * (1 - fx) + d * fx) * fy;
   };
-  const e0 = idx(gx, gy);
+  const e0 = at(gx, gy);
   if (e0 === null) return { horizon: new Array(360).fill(0), elevationM: 0, inside: false };
 
   const R = 1737400;
+  // same reach as the named sites (150 km), half-cell steps, curvature drop subtracted
+  const stepCells = 0.5;
+  const maxK = Math.ceil(150000 / (pixM * stepCells));
   const horizon: number[] = [];
   for (let a = 0; a < 360; a++) {
     // geographic azimuth -> image direction: north (az 0) is (sin lon, -cos lon), east is (cos lon, sin lon)
     const ang = ((a + lon) * Math.PI) / 180;
-    const dx = Math.sin(ang);
-    const dy = -Math.cos(ang);
+    const dx = Math.sin(ang) * stepCells;
+    const dy = -Math.cos(ang) * stepCells;
     let best = -1e9;
-    for (let k = 1; k <= 100; k++) {
-      const h = idx(gx + dx * k, gy + dy * k);
+    for (let k = 1; k <= maxK; k++) {
+      const h = at(gx + dx * k, gy + dy * k);
       if (h === null) break;
-      const d = k * pixM;
+      const d = k * stepCells * pixM;
       const slope = (h - e0 - (d * d) / (2 * R)) / d;
       if (slope > best) best = slope;
     }
@@ -189,10 +194,36 @@ export function computeShadow(field: ShadowField, sky: Sky): ShadowView {
     const bin = Math.min(bins - 1, Math.floor((az / (Math.PI * 2)) * bins));
     // byte encodes degrees as (deg + 32) * 4
     const hDeg = (horizon[i * bins + bin] - 128) / 4;
-    if (elDeg > hDeg) {
+    // same definition as the site results and NASA's maps: any part of the solar disc (0.266 deg) clears the skyline
+    if (elDeg + 0.266 > hDeg) {
       lit[i] = 1;
       litCount++;
     }
   }
   return { lit, frac: valid ? litCount / valid : 0 };
+}
+
+/** The point `distM` from (lat, lon) toward geographic azimuth `azDeg` (great circle, east-positive longitude). */
+export function offsetPoint(lat: number, lon: number, azDeg: number, distM: number) {
+  const D = Math.PI / 180, d = distM / R_MOON, f1 = lat * D, l1 = lon * D, a = azDeg * D;
+  const f2 = Math.asin(Math.sin(f1) * Math.cos(d) + Math.cos(f1) * Math.sin(d) * Math.cos(a));
+  const l2 = l1 + Math.atan2(Math.sin(a) * Math.sin(d) * Math.cos(f1), Math.cos(d) - Math.sin(f1) * Math.sin(f2));
+  return { lat: f2 / D, lon: ((((l2 / D) % 360) + 360) % 360) };
+}
+
+/**
+ * Skyline at a point near a named site: the site's detailed (80 m) skyline plus the change our
+ * coarse (~600 m) grid sees between the site and the point. At the site itself this returns the
+ * site's own skyline exactly, so a nearby position is never judged on a different terrain model.
+ */
+export function nearbyHorizon(grid: ElevationGrid, site: Pick<Site, "lat" | "lon" | "horizonDeg" | "elevationM">, lat: number, lon: number) {
+  const here = customHorizon(grid, site.lat, site.lon);
+  const there = customHorizon(grid, lat, lon);
+  if (!here.inside || !there.inside) return null;
+  const n = site.horizonDeg.length;
+  const horizon = site.horizonDeg.map((h, i) => {
+    const a = Math.floor((i * 360) / n) % 360;
+    return h + (there.horizon[a] - here.horizon[a]);
+  });
+  return { horizon, elevationM: site.elevationM + (there.elevationM - here.elevationM) };
 }

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import { projectToUnit, unprojectFromUnit, type ElevationGrid, type ShadowField, type ShadowView } from "../lib/terrain";
 import type { Site, Sky } from "../lib/selene";
+import { cellAtUnit, finderHalfUnit, type Finder, type FinderLimits, type FinderSpot } from "../lib/finder";
 
 const SIZE = 1024;
 
@@ -24,7 +25,7 @@ const LAYER_DEFS: [keyof MapLayers, string, string][] = [
  * What is under the pointer. Kept outside React state so moving the mouse
  * re-renders only the status bar, not the map or the rest of the console.
  */
-type Cursor = { lat: number; lon: number; elevM: number | null; lit: boolean | null } | null;
+type Cursor = { lat: number; lon: number; elevM: number | null; lit: boolean | null; cell?: FinderSpot | null } | null;
 let cursor: Cursor = null;
 const cursorSubs = new Set<() => void>();
 const setCursor = (c: Cursor) => {
@@ -53,6 +54,8 @@ type Props = {
   custom?: { lat: number; lon: number } | null;
   layers?: MapLayers;
   elevation?: ElevationGrid | null;
+  /** site-finder mode: the classified grid replaces the live shadows */
+  finder?: { data: Finder; canvas: HTMLCanvasElement; limits: FinderLimits } | null;
   /** corner read-outs drawn over the map square */
   children?: ReactNode;
 };
@@ -128,7 +131,7 @@ function layout(sites: Site[], selectedId: string): Placed[] {
   return out;
 }
 
-export default function MapView({ hillshade, field, shadow, sites, selectedId, onSelect, sky, onPick, custom, layers = ALL_LAYERS, elevation, children }: Props) {
+export default function MapView({ hillshade, field, shadow, sites, selectedId, onSelect, sky, onPick, custom, layers = ALL_LAYERS, elevation, finder, children }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const overlay = useMemo(() => {
@@ -158,12 +161,30 @@ export default function MapView({ hillshade, field, shadow, sites, selectedId, o
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     ctx.clearRect(0, 0, SIZE, SIZE);
+    if (finder) {
+      // the finder covers 85-90 deg S; the terrain outside it is dimmed
+      ctx.globalAlpha = 0.45;
+      ctx.drawImage(hillshade, 0, 0, SIZE, SIZE);
+      ctx.globalAlpha = 1;
+      const h = finderHalfUnit(finder.data);
+      const x0 = ((1 - h) / 2) * SIZE, w = h * SIZE;
+      ctx.drawImage(hillshade, x0, x0, w, w, x0, x0, w, w);
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(finder.canvas, x0, x0, w, w);
+      ctx.imageSmoothingEnabled = true;
+      ctx.strokeStyle = "rgba(255,255,255,0.5)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(SIZE / 2, SIZE / 2, (w / 2) * 0.9998, 0, Math.PI * 2);
+      ctx.stroke();
+      return;
+    }
     ctx.drawImage(hillshade, 0, 0, SIZE, SIZE);
     if (overlay && layers.shadow) {
       ctx.imageSmoothingEnabled = true;
       ctx.drawImage(overlay, 0, 0, SIZE, SIZE);
     }
-  }, [hillshade, overlay, layers.shadow]);
+  }, [hillshade, overlay, layers.shadow, finder]);
 
   const placed = useMemo(() => layout(sites, selectedId), [sites, selectedId]);
   const sunBearing = sky ? sky.subSun.lon : 0;
@@ -171,6 +192,8 @@ export default function MapView({ hillshade, field, shadow, sites, selectedId, o
 
   return (
     <div className="map-wrap">
+      {/* in site-finder mode the view zooms to 85-90 deg S, the area NASA's maps cover */}
+      <div className={finder ? "map-zoom is-zoomed" : "map-zoom"} style={finder ? ({ "--zoom": String(1 / finderHalfUnit(finder.data)) } as React.CSSProperties) : undefined}>
       <canvas
         ref={canvasRef}
         width={SIZE}
@@ -194,6 +217,7 @@ export default function MapView({ hillshade, field, shadow, sites, selectedId, o
             lon,
             elevM: elevation ? elevation.data[cell(elevation.size)] : null,
             lit: field && shadow && field.mask[fi] ? shadow.lit[fi] === 1 : null,
+            cell: finder ? cellAtUnit(finder.data, fx * 2 - 1, fy * 2 - 1, finder.limits) : undefined,
           });
         }}
         onMouseLeave={() => setCursor(null)}
@@ -272,6 +296,7 @@ export default function MapView({ hillshade, field, shadow, sites, selectedId, o
           );
         })}
       </svg>
+      </div>
 
       {sky && (
         <div className="sun-dial" title="Direction of the Sun from the south pole">
@@ -299,9 +324,16 @@ export default function MapView({ hillshade, field, shadow, sites, selectedId, o
         </div>
       )}
 
-      <div className="map-scale" style={{ width: `${((100 / MAP_KM) * CANVAS_FRAC * 100).toFixed(2)}%` }} aria-hidden>
-        <span>100 km</span>
+      {(() => {
+        // the bar keeps a sensible length when the finder zooms in: 100 km normally, 50 km zoomed
+        const zoom = finder ? 1 / finderHalfUnit(finder.data) : 1;
+        const km = finder ? 50 : 100;
+        return (
+      <div className="map-scale" style={{ width: `${((km / MAP_KM) * CANVAS_FRAC * 100 * zoom).toFixed(2)}%` }} aria-hidden>
+        <span>{km} km</span>
       </div>
+        );
+      })()}
       {children}
     </div>
   );
@@ -311,7 +343,7 @@ export default function MapView({ hillshade, field, shadow, sites, selectedId, o
  * Status bar under the map: legend, what is under the pointer, and the layer list.
  * Nothing here sits on top of the terrain.
  */
-export function MapStatusBar({ layers, onLayers }: { layers: MapLayers; onLayers: Dispatch<SetStateAction<MapLayers>> }) {
+export function MapStatusBar({ layers, onLayers, finderMode = false }: { layers: MapLayers; onLayers: Dispatch<SetStateAction<MapLayers>>; finderMode?: boolean }) {
   const cur = useSyncExternalStore(subscribeCursor, () => cursor);
   const [open, setOpen] = useState(false);
   const boxRef = useRef<HTMLDivElement>(null);
@@ -337,8 +369,17 @@ export function MapStatusBar({ layers, onLayers }: { layers: MapLayers; onLayers
   return (
     <div className="map-status">
       <div className="ms-legend">
-        <span className="dot dot-lit" /> Sunlight
-        <span className="dot dot-dark" /> Shadow
+        {finderMode ? (
+          <>
+            <span className="chip chip-ok" /> Passes all
+            <span className="chip chip-low" /> Fails one
+          </>
+        ) : (
+          <>
+            <span className="dot dot-lit" /> Sunlight
+            <span className="dot dot-dark" /> Shadow
+          </>
+        )}
       </div>
       <div className="ms-cursor">
         {cur ? (
@@ -351,7 +392,13 @@ export function MapStatusBar({ layers, onLayers }: { layers: MapLayers; onLayers
                 <span className="ms-v ms-wide">{cur.elevM < 0 ? "\u2212" : "+"}{Math.abs(cur.elevM).toLocaleString("en-GB")} m</span>
               </>
             )}
-            {cur.lit !== null && <span className={cur.lit ? "ms-state ms-lit" : "ms-state"}>{cur.lit ? "In sunlight" : "In shadow"}</span>}
+            {cur.cell !== undefined ? (
+              cur.cell ? (
+                <span className="ms-cell">
+                  best spot here: sun {cur.cell.sunPct}% · Earth {cur.cell.earthPct}% · slope {cur.cell.slopeDeg.toFixed(1)}° · shadow {cur.cell.shadowKm !== null ? `${cur.cell.shadowKm.toFixed(1)} km` : "> 12.7 km"}
+                </span>
+              ) : <span className="ms-state">outside NASA's 85°S maps</span>
+            ) : cur.lit !== null && <span className={cur.lit ? "ms-state ms-lit" : "ms-state"}>{cur.lit ? "In sunlight" : "In shadow"}</span>}
           </>
         ) : (
           <span className="ms-hint">
