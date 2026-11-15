@@ -876,6 +876,9 @@
   .site-name { font-size: var(--fs-5); }
   .foot-note { margin-left: 0; }
   .poster { grid-template-columns: minmax(0, 1fr); }
+  /* landing-window chips are nowrap by default and can exceed a phone width */
+  .window { white-space: normal; height: auto; max-width: 100%; padding: 5px var(--s-15); }
+  .w-date { line-height: 1.35; }
   .poster-art { height: 220px; min-height: 0; }
   .poster-copy { padding: var(--s-3) 20px 20px; }
   .poster-copy h2 { font-size: var(--fs-6); }
@@ -980,6 +983,10 @@
   .stage-switch { top: auto; bottom: var(--s-1); left: auto; right: var(--s-1); transform: none; }
   .t3d-note { padding-bottom: 46px; }
   .t3d-bar { top: var(--s-1); }
+  /* four camera buttons must fit a phone width: tighter padding, and a long site name truncates */
+  .globe-bar .segmented { max-width: 100%; }
+  .globe-bar .seg { flex: 0 0 auto; padding: 0 5px; }
+  .globe-bar .seg:last-child { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
 
 /* ------------------------------------------------------------ sizing, panel modes */
