@@ -114,11 +114,11 @@
   },
   "validate-wac": {
    "command": "node scripts/validate-wac.mjs",
-   "ranAt": "2026-11-15T18:36:47.993Z",
-   "seconds": 8,
-   "key": "044ec773e952fa77a977df942a5a8f910cb46d3febc5c6ec2351afffdc76f12e",
+   "ranAt": "2026-11-15T18:43:29.218Z",
+   "seconds": 7,
+   "key": "8896c03ae651cee949de8e4a82e345c2530049dc0dbca5ddd77e0641af781fd0",
    "inputs": {
-    "web/scripts/validate-wac.mjs": "02b4313a099dcd90dd945397abe0d1ffbf8c3d53e7470c401f3330d9f8aae2a3",
+    "web/scripts/validate-wac.mjs": "ac1422e9cf71c94ccfa940c4b98bd6a59cc472221f1fc89120f6cd7fc1aac637",
     "scripts/lib/horizon.mjs": "827e5f7e859016c1b7b7343d5c85ec98f3f57f55742469cdce0129b2a4c82e43",
     "web/src/lib/selene.ts": "c68784ca4beda39ed01b83fcdd12954b526ac2abe9a4f12f259029f1eea2700f",
     "data/raw/ldem_80s_80m.img": "e6591eeea35402ca5e124ca00f5bf0774381a2d4fa919144b455d82b8ff65fdc",
