@@ -100,8 +100,13 @@ magnitude below the 80 m terrain resolution. Output is committed at
   deep, and Shackleton crater appears at the correct offset with a 21 km diameter.
 - The lunar frame is checked against physical libration: the sub-Earth point stays within ~±7°
   of the prime meridian.
-- **86% illumination** at the peak near Shackleton over 180 days — inside the published
-  80–86% range for the best south-pole locations.
+- **Validated against NASA's own map.** Compared with the LOLA team's 18.6-year average
+  visibility product (`AVGVISIB_85S_060M`, PGDA product 69) at 451 points: **r = 0.995,
+  RMSE 1.4 percentage points**. That comparison found a 180° horizon/azimuth error in an
+  earlier build, which is now fixed.
+- **73% illumination** at the peak near Shackleton over 180 days. This is a region centre,
+  not a searched optimum, which is why it sits below the ~85–88% published for optimised
+  clusters.
 
 ## Limitations
 

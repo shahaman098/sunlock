@@ -63,7 +63,8 @@ for (const prod of products) {
     const prof = [];
     for (let az = 0; az < 360; az++) {
       const ang = (az - site.lon) * D;
-      const dx = Math.sin(ang), dy = Math.cos(ang);
+      // negated: raster axes run opposite to the standard stereographic convention
+      const dx = -Math.sin(ang), dy = -Math.cos(ang);
       let best = -1e9;
       for (let k = 1; k <= steps; k++) {
         const h = at(x0 + dx * k * stepPx, y0 + dy * k * stepPx);

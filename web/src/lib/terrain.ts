@@ -96,9 +96,10 @@ export function customHorizon(grid: ElevationGrid, lat: number, lon: number) {
   const horizon: number[] = [];
   for (let a = 0; a < 360; a++) {
     const ang = ((a - lon) * Math.PI) / 180;
-    // image-space direction matching geographic azimuth a
-    const dx = Math.sin(ang);
-    const dy = Math.cos(ang);
+    // image-space direction matching geographic azimuth a; negated because the
+    // raster's axes run opposite to the standard stereographic convention
+    const dx = -Math.sin(ang);
+    const dy = -Math.cos(ang);
     let best = -1e9;
     for (let k = 1; k <= 100; k++) {
       const h = idx(gx + dx * k, gy + dy * k);

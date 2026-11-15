@@ -71,9 +71,14 @@ function elevAt(x, y) {
 function horizonAlong(x, y, lon, az, maxSteps, stepPx) {
   const e0 = elevAt(x, y);
   if (e0 === null) return 0;
+  // The raster's line/sample axes run opposite to the standard stereographic
+  // x/y convention for this product, so the image-space direction is negated.
+  // Validated against NASA's LOLA visibility map (PGDA product 69): without this
+  // the horizon is read 180 degrees from the Sun's azimuth and Cabeus, a
+  // permanently shadowed crater, comes out 30% lit instead of 0%.
   const a = (az - lon) * D;
-  const dx = Math.sin(a);
-  const dy = Math.cos(a);
+  const dx = -Math.sin(a);
+  const dy = -Math.cos(a);
   let best = -1e9;
   let px = x;
   let py = y;

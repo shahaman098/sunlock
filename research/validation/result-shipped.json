@@ -1,0 +1,53 @@
+{
+  "generated": "2026-11-15T01:09:25.822Z",
+  "convention": "shipped",
+  "stepHours": 3,
+  "years": 18.6,
+  "start": "2010-01-01T00:00:00.000Z",
+  "points": {
+    "requested": 300,
+    "used": 300,
+    "paired": 270,
+    "dropped": 0
+  },
+  "h1": {
+    "r": 0.9907,
+    "rmsePct": 1.79,
+    "biasPct": -0.32,
+    "rCentre": 0.9892
+  },
+  "bands": [
+    {
+      "band": "0-20%",
+      "n": 107,
+      "bias": -0.1
+    },
+    {
+      "band": "20-50%",
+      "n": 162,
+      "bias": -0.47
+    },
+    {
+      "band": "50-80%",
+      "n": 1,
+      "bias": 1.19
+    },
+    {
+      "band": "80-101%",
+      "n": 0,
+      "bias": null
+    }
+  ],
+  "distributions": {
+    "ours": [
+      0.018,
+      0.237,
+      0.429
+    ],
+    "ref": [
+      0.02,
+      0.236,
+      0.433
+    ]
+  }
+}

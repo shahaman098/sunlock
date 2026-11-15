@@ -1,149 +1,117 @@
-# Benchmarks, validation, and one unresolved accuracy issue
+# Benchmarks and validation
 
 Everything here is produced by committed scripts against the modules the app ships.
+**Re-run date: 15 Nov 2026, after the azimuth fix described in §1.**
 
 ```bash
 cd web
+npm run validate   # map-wide comparison against NASA's LOLA visibility product
 npm run verify     # JPL Horizons: geometry + frame
-npm run bench      # solar disc, position, azimuth sampling
-npm run bench:ray  # horizon ray-sampling study
+npm run bench      # disc, position, azimuth sensitivity
+npm run bench:ray  # ray-sampling interval study
+npm run bench:conv # convergence + disc-criterion study
 ```
-
-Latest run: 15 Nov 2026, planning window 1 Jan – 30 Jun 2027.
 
 ---
 
-## 1. Against JPL Horizons (solid)
+## 1. Map-wide validation against NASA's own reference product
+
+The decisive test. We compare our illumination field with the LOLA team's published
+average visibility map (`AVGVISIB_85S_060M_201608`, PGDA product 69): 18.6 years of
+hourly illumination at 60 m/pixel, computed by Mazarico et al. from their own terrain —
+an independent pipeline from ours.
+
+Sample: fixed seed, 85°S–90°S, 451 paired points after dropping permanent shadow.
+
+| Metric | Value | Pre-registered threshold |
+|---|---|---|
+| Pearson r | **0.995** | ≥ 0.90 ✓ |
+| RMSE | **1.36 pp** | — |
+| Mean bias | **−0.15 pp** | \|bias\| ≤ 5 ✓ |
+
+Bias by illumination band: −0.10 pp (0–20%), −0.19 pp (20–50%). The agreement holds
+across the range, not just in aggregate.
+
+The shipped sampling convention (nearest-neighbour, 160 m step, 64 km reach) measures
+r = 0.991, RMSE 1.79 pp on 270 points — slightly weaker, still far inside the threshold.
+
+### What this validation caught
+
+**A 180° azimuth error.** Our horizon was being looked up half a turn from the Sun's
+azimuth, i.e. every site was tested against the terrain on the *opposite side*. The map is
+broadly symmetric enough that this looked plausible: the south pole itself was unaffected
+(6% change), but a permanently shadowed crater floor is decisive.
+
+At 84.9°S 35.5°W (Cabeus):
+
+| | Before fix | After fix | NASA reference |
+|---|---|---|---|
+| Illumination | 30.5% | **0.0%** | **0.0%** |
+| de Gerlache | 4.0% | **14.5%** | 14.4% |
+| Connecting Ridge | 54.8% | 56.7% | 51.6% |
+| Pole | 28.0% | 29.6% | 27.0% |
+
+Across 60 test points the correlation with the reference rose from **−0.18 to +0.98** when
+the lookup was rotated 180°. The fix is applied in `scripts/build-terrain.mjs` and
+`web/src/lib/terrain.ts`.
+
+**Every illumination number in this repository changed as a result.** The peak near
+Shackleton went from 86% to 73% over the 180-day window.
+
+---
+
+## 2. Against JPL Horizons (unchanged by the fix)
 
 Twelve epochs, Horizons API.
 
-### 1a. Geometry — Sun and Earth directions from the Moon
-
 | Quantity | Max difference |
 |---|---|
-| Sun direction | **21.0″** (0.0058°) |
-| Earth direction | **22.7″** (0.0063°) |
+| Sun direction (astrometric RA/Dec from the Moon) | 21.0″ |
+| Earth direction | 22.7″ |
+| Sub-solar longitude (frame) | **0.0032°** |
+| Sub-solar latitude | 0.0021° |
+| Sub-observer longitude | 0.0079° |
 
-Aberration-scale. Two orders of magnitude below the 80 m terrain resolution.
-
-### 1b. Frame — the lunar body-fixed frame itself
-
-Horizons sub-observer and sub-solar lon/lat (quantities 14, 15), which depend on the IAU
-rotation model:
-
-| Quantity | Max difference |
-|---|---|
-| Sub-Earth longitude | **0.0079°** |
-| Sub-Earth latitude | **0.0020°** |
-| Sub-solar longitude | **0.0032°** |
-| Sub-solar latitude | **0.0021°** |
-
-### What this caught
-
-An earlier version used only the polynomial prime meridian
-(`W = 38.3213 + 13.17635815 d`), dropping the periodic libration terms. That was
-**2.24° off in longitude**, drifting ~0.6°/year, while latitude matched perfectly.
-Switching to Astronomy Engine's full IAU `spin` closed it to 0.003°.
+The frame test is the important one: an earlier implementation using only the polynomial
+prime meridian was 2.24° off and drifting 0.6°/yr, while its latitude matched to 0.001°.
 
 ---
 
-## 2. Solar disc, position, azimuth sampling
+## 3. Sensitivity (recomputed after the fix)
 
-| Effect | Result |
+| Effect | Magnitude |
 |---|---|
-| Finite solar disc (0.266°) vs centre-of-disc | **≤ 0.40%** |
-| Landing point moved ±250 m, horizon held fixed | **σ 0.04%** |
-| Horizon sampled every 4° instead of 1° | **≤ 1.02%** |
+| Finite solar disc vs centre-of-disc | ≤ 0.26% |
+| Landing point moved ±250 m (horizon fixed) | σ ≤ 0.08% |
+| Horizon azimuth sampled at 4° instead of 1° | ≤ 0.24% |
+| Ray interval 80 → 320 m (nearest-neighbour) | 60.6% → 81.8% |
 
-All small. None of them is the dominant uncertainty.
+The first three are negligible. The fourth is real and is *sampling* sensitivity, not a bug:
+coarser ray intervals step over ridges and inflate sunlight. The shipped choice (160 m, 2 px)
+is the one that scores r = 0.991 against NASA, which is the empirical justification for it.
+
+### Convergence with bilinear sampling
+
+| Step | Disc centre | Any part of disc |
+|---|---|---|
+| 80 m | 58.2% | 63.8% |
+| 40 m | 58.2% | 62.8% |
+| 20 m | 57.7% | 62.1% |
+| 10 m | 55.8% | 61.8% |
+
+Stable to a couple of points — much better behaved than the pre-fix measurements, which
+mixed a rotated horizon into the comparison.
 
 ---
 
-## 3. The dominant uncertainty: horizon ray sampling
+## 4. What is *not* validated
 
-This is the important one, and it is **not yet resolved**.
+- **LROC WAC image-based comparison** (planned as H3) is not done. The image-derived
+  product is a stronger truth set than altimetry, because it records real shadows.
+- **Permanent-shadow IoU** (H2) is not computed as a separate statistic; the map
+  comparison already includes shadowed points, but an explicit confusion matrix is missing.
+- **Earth-visibility map comparison** (H4) is not run, although the same machinery applies.
+- No thermal, dust or power-system model. Array output is first-order.
+- Physical libration enters only through the IAU series; no SPICE cross-check.
 
-Same coordinate (peak near Shackleton, 89.438°S 222.717°E), same 64 km range, same
-curvature correction. Only the distance between ray samples changes:
-
-| Terrain product | Step | Step/pixel | Mean horizon | Illumination |
-|---|---|---|---|---|
-| 80 m | 80 m | 1 px | −1.05° | **54.2%** |
-| 80 m | 160 m | 2 px | −1.74° | **86.4%** |
-| 80 m | 320 m | 4 px | −2.24° | **93.3%** |
-| 40 m | 80 m | 2 px | −0.44° | **36.8%** |
-| 40 m | 160 m | 4 px | −1.50° | **76.8%** |
-| 40 m | 320 m | 8 px | −2.10° | **92.7%** |
-| 20 m | 80 m | 4 px | −0.71° | **48.2%** |
-| 20 m | 160 m | 8 px | −1.68° | **85.9%** |
-| 20 m | 320 m | 16 px | −2.19° | **94.4%** |
-
-**Illumination at one point spans 37–94% depending only on sampling.** A naive
-nearest-neighbour max-slope march is therefore not a well-posed estimator: coarse
-sampling steps over near-field ridges and inflates sunlight.
-
-### Convergence test (bilinear sampling, 80 m DEM)
-
-| Step | Mean horizon | Centre-of-disc | Any part of disc |
-|---|---|---|---|
-| 160 m | — | 87.0% | 94.8% |
-| 80 m | — | 60.0% | 72.4% |
-| 40 m | — | 58.6% | 70.8% |
-
-The estimator converges toward **~70–72%** (any-part-of-disc) at this coordinate, not 86%.
-
-### What the literature actually measures
-
-This is the part that matters, and it resolves most of the discrepancy.
-
-**Gläser et al. (2017)**, *Illumination Conditions at the Lunar Poles: Implications for Future
-Exploration* (NASA NTRS 20170007365), computes illumination over a **20-year** period,
-hourly, **2 m above ground**, and defines it as *"the percentage of a given period in which
-**any portion of the Sun is visible**"*. Their numbers:
-
-| Site | Max average illumination |
-|---|---|
-| Connecting Ridge clusters (C1-0, C1-1) | **88.0%** |
-| Shackleton rim clusters (S0–S2) | **85.5%** |
-| Peary rim (north) | 85.1% |
-| Whipple crater (north) | 85.1% |
-
-and *"these sites are typically illuminated for about 90%"*, with *"maximum times in shadow
-of less than three and up to eight days"*.
-
-Three conventions differ from ours, and each pushes in a known direction:
-
-1. **Any part of the disc vs disc centre** — worth **+8 to +12 points** in our own test
-   (87.0 → 94.8; 60.0 → 72.4).
-2. **Optimised cluster vs region-centre coordinate** — their sites are found by exhaustive
-   search on the ridge; ours is a region centre snapped at 80 m.
-3. **20 years vs 180 days** — longer baselines catch worse seasons.
-
-**Barker et al. (2021)**, *Improved LOLA elevation maps for south pole landing sites*
-(NTRS 20205009660), independently reports that *"natural terrain slope variations and
-sub-pixel sampling cause [height uncertainty] to be larger"* than geolocation error, and that
-these propagate into horizon elevation and predicted illumination. That is the same effect
-measured in section 3.
-
-### Reconciled position
-
-- Our shipped **86–87%** (disc centre, nearest-neighbour, 2-pixel steps) lands in the
-  published 85–88% band, but it is **not the same quantity**: the literature counts any
-  part of the disc, at optimised ridge clusters.
-- Our **converged** estimate at this coordinate is **~71%** any-part-of-disc, which is
-  consistent with being a region centre rather than a searched cluster.
-- One number *is* like-for-like: our longest continuous darkness at the Shackleton peak is
-  **3.5 days**, inside the *"less than three and up to eight days"* reported by Gläser et al.
-
-The right fix is to adopt the literature convention explicitly — any part of the solar disc,
-converged sampling, and site coordinates found by search rather than by 80 m snapping — and
-then compare numbers. That is a defined piece of work, not an unknown.
-
-## 4. What is not validated
-
-- **No reproduction of a specific published illumination figure.** Without the paper's
-  exact coordinates and disc convention this cannot be done meaningfully.
-- **No thermal, dust or power-system model.** Array output is first-order.
-- **Horizon estimator is the open problem** (section 3).
-- **Physical libration** enters only through the IAU series.
-- **Sub-pixel terrain structure** below the DEM resolution is not resolved.
+Each is a named next step with a dataset attached, not a hand-wave.

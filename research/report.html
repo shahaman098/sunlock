@@ -12,108 +12,96 @@ code, pre { font-family: Menlo, monospace; font-size: 8.5pt; background: #f4f4f4
 pre { padding: 6pt; white-space: pre-wrap; }
 hr { border: none; border-top: 0.5pt solid #ccc; margin: 12pt 0; }
 ul { margin: 0 0 6pt 16pt; }
-</style></head><body><h1>Sampling and convention dependence in lunar polar illumination estimates from public DEMs</h1>
-<p><strong>A reproducibility note for SUNLOCK</strong> · 15 November 2026 · code and data: <code>github.com/shahaman098/sunlock</code></p>
+</style></head><body><h1>Validating a browser-based lunar polar illumination model against NASA&#x27;s LOLA visibility map</h1>
+<p><strong>SUNLOCK technical note</strong> · 15 November 2026 · code: <code>github.com/shahaman098/sunlock</code></p>
 <hr/>
 <h2>Abstract</h2>
-<p>Illumination percentages for the lunar south pole are widely quoted (≈ 80–88%) but are computed under conventions that are rarely stated together: terrain resolution, ray-sampling interval, observer height, temporal baseline, and whether the Sun&#x27;s disc centre or any part of its disc is required to clear the horizon. Using only public data — the LRO LOLA gridded elevation models at 80 m, 40 m and 20 m per pixel — we show that at a single coordinate (89.438°S, 222.717°E) the <em>time-averaged</em> illumination estimate varies from <strong>36.8% to 94.4%</strong> depending only on the distance between horizon ray samples. With bilinear interpolation the estimator converges to ≈ <strong>54–59%</strong> (disc centre) or ≈ <strong>67–71%</strong> (any part of disc). We further verify the ephemeris and lunar rotation model against JPL Horizons to <strong>0.0032°</strong> in sub-solar longitude, so the spread is attributable to terrain sampling and convention rather than to astronomy. We conclude that a single-number illumination claim is meaningless unless its sampling convention and criterion are stated, and we recommend the convention used by Gläser et al. (2017) — any part of the solar disc, converged sampling, searched cluster coordinates — for comparability with the literature.</p>
+<p>We test a browser-based lunar south-pole illumination model against NASA&#x27;s published average-visibility product (<code>AVGVISIB_85S_060M_201608</code>, PGDA product 69) — 18.6 years of hourly illumination computed by the LOLA team from their own terrain, with an independent pipeline. At 451 sample points between 85°S and 90°S the model reproduces the reference with Pearson <strong>r = 0.995</strong>, RMSE <strong>1.36 percentage points</strong> and mean bias <strong>−0.15 pp</strong>.</p>
+<p>The comparison found a defect that no internal check had caught: the local horizon was being looked up <strong>180° away</strong> from the Sun&#x27;s azimuth, so every site was tested against terrain on the opposite side. Correcting it moved a permanently shadowed crater floor from 30.5% to 0.0% (reference: 0.0%) and raised the correlation across 60 diagnostics points from −0.18 to +0.98. Every illumination number produced by the model before this fix was wrong in a site-dependent way; the corrected values are reported here.</p>
+<p>The astronomy is verified separately against JPL Horizons: sub-solar longitude agrees to <strong>0.0032°</strong>, sun direction to 21″.</p>
 <hr/>
 <h2>1. Introduction</h2>
-<p>Mission concepts for the lunar south pole depend on two quantities: how often the Sun is visible, and how often Earth is in view. Published values cluster around 80–88% at the best sites (Mazarico et al., 2011; Gläser et al., 2017), with continuous darkness of a few days. Those numbers are computed from digital terrain models (DTMs) by ray-marching a local horizon and testing the Sun against it.</p>
-<p>Between the DTM and the percentage sit several choices that are usually reported separately, if at all. This note isolates them on one coordinate, using the same ephemeris and the same code path throughout, so that the only variables are terrain sampling and the visibility criterion.</p>
+<p>Tools that predict polar illumination are only as good as their terrain handling. Published values for the best south-pole sites cluster at 85–88% (Mazarico et al. 2011; Gläser et al. 2017), but those figures depend on terrain resolution, ray-sampling interval, observer height, temporal baseline and whether the Sun&#x27;s disc centre or any part of its disc must clear the horizon.</p>
+<p>Internal consistency does not establish correctness. This note reports an external test against a reference product we did not produce, and the defect that test exposed.</p>
 <h2>2. Data</h2>
-<table><thead><tr><th>Product</th><th>Resolution</th><th>Coverage</th><th>Size</th></tr></thead><tbody>
-<tr><td><code>LDEM_80S_80M</code></td><td>80 m/px</td><td>80°S–90°S</td><td>7,600²</td></tr>
-<tr><td><code>LDEM_80S_40M</code></td><td>40 m/px</td><td>80°S–90°S</td><td>15,200²</td></tr>
-<tr><td><code>LDEM_875S_20M</code></td><td>20 m/px</td><td>87.5°S–90°S</td><td>7,584²</td></tr>
+<table><thead><tr><th>Product</th><th>Source</th><th>Resolution</th><th>Use</th></tr></thead><tbody>
+<tr><td><code>AVGVISIB_85S_060M_201608</code></td><td>PGDA product 69 (LOLA team)</td><td>60 m/px, 85–90°S</td><td>reference, 18.6 yr hourly</td></tr>
+<tr><td><code>LPSR_85S_060M_201608</code></td><td>PGDA product 69</td><td>60 m/px</td><td>permanent shadow (not yet used)</td></tr>
+<tr><td><code>LDEM_80S_80M</code></td><td>PDS Geosciences</td><td>80 m/px, 80–90°S</td><td>our terrain</td></tr>
+<tr><td><code>LDEM_80S_40M</code></td><td>PDS Geosciences</td><td>40 m/px</td><td>sampling study</td></tr>
+<tr><td><code>LDEM_875S_20M</code></td><td>PDS Geosciences</td><td>20 m/px, 87.5–90°S</td><td>sampling study</td></tr>
 </tbody></table>
-<p>All from the NASA PDS Geosciences Node (LRO-L-LOLA-4-GDR-V1.0). Elevation is <code>DN × 0.5 m</code> relative to a 1,737.4 km sphere; heights are stored as signed 16-bit integers.</p>
-<p>Ephemerides come from Astronomy Engine (VSOP87/ELP series). The lunar body-fixed frame uses the IAU WGCCRE 2015 pole and prime meridian, including the periodic libration terms.</p>
+<p>The reference defines its metric explicitly: <em>&quot;the percentage of timesteps where each pixel was sunlit (by any fraction of the solar disc)&quot;</em>, scaling <code>DN × 4×10⁻⁵</code>, over 18.6 years.</p>
 <h2>3. Method</h2>
-<p>For a coordinate, the horizon is the supremum of elevation angle along each of 360 azimuths:</p>
-<pre>
-slope_i = (h_i − h_0 − d_i² / 2R) / d_i        horizon = max_i atan(slope_i)
-</pre>
-<p>where <code>d_i</code> is the horizontal distance to sample <em>i</em> and the <code>d²/2R</code> term is the lunar curvature drop. A point is illuminated when the solar elevation exceeds the horizon in the Sun&#x27;s azimuth, integrated over 1 Jan – 30 Jun 2027 at 30-minute steps.</p>
-<p>Three variants are compared:</p>
-<ul>
-<li><strong>nearest</strong>: sample the nearest raster cell at a fixed distance interval;</li>
-<li><strong>bilinear</strong>: interpolate between cells, which is well-posed as the interval → 0;</li>
-<li><strong>criterion</strong>: Sun centre clears the horizon, vs any part of the 0.266° disc.</li>
-</ul>
-<h2>4. Validation of the astronomy</h2>
-<p>Before attributing any spread to terrain, the sky must be shown correct. At 12 epochs in 2027, against JPL Horizons:</p>
+<p>For each sample point we ray-march a 360-azimuth horizon on the 80 m elevation model to a 150 km reach, subtracting the lunar curvature drop <code>d²/2R</code>. Sun and Earth directions come from Astronomy Engine, rotated into the IAU 2015 lunar frame. A point is illuminated when any part of the 0.266° solar disc clears the horizon in the Sun&#x27;s azimuth.</p>
+<p>Sampling: fixed seed, 2,000 points uniform in area over 85–90°S plus the nine named regions; points falling outside valid data are dropped and counted.</p>
+<h2>4. Results</h2>
+<h3>4.1 Map-wide agreement</h3>
+<table><thead><tr><th>Metric</th><th>Value</th><th>Pre-registered threshold</th></tr></thead><tbody>
+<tr><td>Pearson r</td><td><strong>0.995</strong></td><td>≥ 0.90</td></tr>
+<tr><td>RMSE</td><td><strong>1.36 pp</strong></td><td>—</td></tr>
+<tr><td>Mean bias</td><td><strong>−0.15 pp</strong></td><td>≤ 5 pp</td></tr>
+<tr><td>Paired points</td><td>451</td><td>—</td></tr>
+</tbody></table>
+<p>Bias by band: −0.10 pp (0–20% illumination), −0.19 pp (20–50%). Agreement is not carried by one end of the range.</p>
+<p>The shipped convention — nearest-neighbour sampling at a 160 m interval — scores r = 0.991, RMSE 1.79 pp on 270 points. The pre-registered hypothesis passes under both.</p>
+<h3>4.2 The defect the test found</h3>
+<p>An earlier build looked up the horizon at the azimuth <strong>180° from the Sun</strong>. The error is invisible at the pole (where terrain is near-isotropic) and survives spot checks on summits, but fails decisively in a crater:</p>
+<table><thead><tr><th>Location</th><th>Before</th><th>After</th><th>Reference</th></tr></thead><tbody>
+<tr><td>Cabeus floor (84.9°S, 35.5°W)</td><td>30.5%</td><td><strong>0.0%</strong></td><td><strong>0.0%</strong></td></tr>
+<tr><td>de Gerlache rim (88.6°S, 278.7°E)</td><td>4.0%</td><td><strong>14.5%</strong></td><td>14.4%</td></tr>
+<tr><td>Connecting Ridge (89.3°S, 216.3°E)</td><td>54.8%</td><td>56.7%</td><td>51.6%</td></tr>
+<tr><td>South pole (89.999°S, 0°)</td><td>28.0%</td><td>29.6%</td><td>27.0%</td></tr>
+</tbody></table>
+<p>A rotation sweep over 60 points made the diagnosis unambiguous:</p>
+<table><thead><tr><th>Horizon lookup rotation</th><th>r vs reference</th></tr></thead><tbody>
+<tr><td>0°</td><td>−0.181</td></tr>
+<tr><td>90°</td><td>0.438</td></tr>
+<tr><td>135°</td><td>0.768</td></tr>
+<tr><td><strong>180°</strong></td><td><strong>0.980</strong></td></tr>
+</tbody></table>
+<p>The cause is an axis convention: this PDS polar-stereographic product stores lines and samples opposite to the standard stereographic x/y convention, so the image-space direction must be negated. The fix is in <code>scripts/build-terrain.mjs</code> and <code>web/src/lib/terrain.ts</code>.</p>
+<h3>4.3 Consequence for every published number</h3>
+<p>With the horizon corrected, the peak near Shackleton yields <strong>73%</strong> illumination over 1 Jan – 30 Jun 2027 (previously 86%), with a longest continuous darkness of <strong>11.5 days</strong> (previously 3.5). The 73% is a region centre, not a searched optimum; published values of 85–88% refer to clusters 20–40 m wide found by search (Gläser et al. 2017).</p>
+<h2>5. Astronomy verification</h2>
+<p>Against JPL Horizons at 12 epochs:</p>
 <table><thead><tr><th>Quantity</th><th>Max difference</th></tr></thead><tbody>
-<tr><td>Sun direction (astrometric RA/Dec from the Moon)</td><td>21.0″</td></tr>
+<tr><td>Sun direction</td><td>21.0″</td></tr>
 <tr><td>Earth direction</td><td>22.7″</td></tr>
-<tr><td>Sub-solar longitude (frame test)</td><td><strong>0.0032°</strong></td></tr>
+<tr><td>Sub-solar longitude</td><td>0.0032°</td></tr>
 <tr><td>Sub-solar latitude</td><td>0.0021°</td></tr>
 <tr><td>Sub-observer longitude</td><td>0.0079°</td></tr>
 </tbody></table>
-<p>The sub-solar comparison is the important one: it tests the rotation model, not just the ephemeris. An earlier implementation using only the polynomial prime meridian (<code>38.3213 + 13.17635815 d</code>) was <strong>2.24° off</strong> and drifting 0.6°/yr, while its latitude matched to 0.001° — a failure mode that a latitude-only check would not catch.</p>
-<h2>5. Results</h2>
-<h3>5.1 Sampling interval, nearest-neighbour</h3>
-<table><thead><tr><th>DTM</th><th>80 m step</th><th>160 m step</th><th>320 m step</th></tr></thead><tbody>
-<tr><td>80 m/px</td><td><strong>54.2%</strong></td><td><strong>86.4%</strong></td><td><strong>93.3%</strong></td></tr>
-<tr><td>40 m/px</td><td>36.8%</td><td>76.8%</td><td>92.7%</td></tr>
-<tr><td>20 m/px</td><td>48.2%</td><td>85.9%</td><td>94.4%</td></tr>
-</tbody></table>
-<p>Illumination increases monotonically with the sampling interval, across all three products. Coarse sampling steps over near-field relief and inflates the result.</p>
-<h3>5.2 Convergence with interpolation (80 m DTM)</h3>
-<table><thead><tr><th>Step</th><th>Illumination</th></tr></thead><tbody>
-<tr><td>80 m</td><td>60.0%</td></tr>
-<tr><td>40 m</td><td>58.6%</td></tr>
-<tr><td>20 m</td><td>57.1%</td></tr>
-<tr><td>10 m</td><td>54.1%</td></tr>
-</tbody></table>
-<p>The sequence is converging downward, apparently toward ≈ 52–55%.</p>
-<h3>5.3 Criterion: centre vs limb</h3>
-<p>Bilinear sampling, same coordinate (<code>npm run bench:conv</code>):</p>
-<table><thead><tr><th>Step</th><th>Disc centre</th><th>Any part of disc</th><th>Difference</th></tr></thead><tbody>
-<tr><td>80 m</td><td>60.0%</td><td>72.4%</td><td>+12.4</td></tr>
-<tr><td>40 m</td><td>58.6%</td><td>70.8%</td><td>+12.2</td></tr>
-<tr><td>20 m</td><td>57.1%</td><td>69.8%</td><td>+12.7</td></tr>
-<tr><td>10 m</td><td>54.1%</td><td>66.7%</td><td>+12.6</td></tr>
-</tbody></table>
-<p>The criterion alone is worth <strong>≈12.5 points</strong> — larger than the differences most studies report <em>between sites</em>. For reference, the shipped nearest-neighbour configuration at 160 m gives 87.0% (centre) and 94.8% (any part), the same gap on a different sampling basis.</p>
-<h3>5.4 Secondary sensitivities</h3>
+<p>The frame test is essential: an earlier implementation using only the polynomial prime meridian was 2.24° off and drifting 0.6°/yr while its latitude matched to 0.001°.</p>
+<h2>6. Sensitivity</h2>
 <table><thead><tr><th>Effect</th><th>Magnitude</th></tr></thead><tbody>
-<tr><td>Observer position ±250 m (horizon fixed)</td><td>σ 0.04%</td></tr>
-<tr><td>Horizon azimuth sampled at 4° instead of 1°</td><td>≤ 1.02%</td></tr>
-<tr><td>Disc-integrated vs centre (at shipped sampling)</td><td>≤ 0.40%</td></tr>
+<tr><td>Finite solar disc vs centre-of-disc</td><td>≤ 0.26%</td></tr>
+<tr><td>Landing point moved ±250 m (horizon fixed)</td><td>σ ≤ 0.08%</td></tr>
+<tr><td>Horizon azimuth sampled every 4° instead of 1°</td><td>≤ 0.24%</td></tr>
+<tr><td>Ray interval 80 → 320 m</td><td>60.6% → 81.8%</td></tr>
 </tbody></table>
-<p>These are small. The dominant term is §5.1.</p>
-<h2>6. Discussion</h2>
-<p>The literature is not wrong, and neither is the shipped number — they measure different things.</p>
-<p>Gläser et al. (2017) define illumination as <em>&quot;the percentage of a given period in which any portion of the Sun is visible&quot;</em>, at 2 m above ground, over twenty years, using a 20 m/px DTM, at clusters <strong>found by search</strong> and only &quot;twenty to forty meters wide&quot;. Mazarico et al. (2011) used a <strong>240 m/px</strong> DTM over the same twenty years. Speyerer and Robinson (2013) used <strong>100 m/px</strong> imagery over one year. The resolution spread alone is a factor of twelve.</p>
-<p>Our shipped 86% is disc-centre, nearest-neighbour at 160 m, at a region-centre coordinate. It sits inside the published band by coincidence of two offsetting approximations: coarse sampling inflates by roughly 15 points, the stricter criterion deflates by 8–12.</p>
-<p>The one genuinely comparable quantity is the longest continuous darkness at the Shackleton peak — <strong>3.5 days</strong> — inside the &quot;less than three and up to eight days&quot; reported by Gläser et al.</p>
-<p>A related subtlety is worth separating explicitly. Gläser et al. argue that coarser <em>imagery</em> <strong>underestimates</strong> illumination because &quot;small-scale illuminated areas less than 100 meters across&quot; are unresolved. That statement concerns the illuminated <strong>area fraction at an instant</strong>. At a <strong>point</strong>, coarse sampling has the opposite effect, because it misses small <em>obstructions</em>. Both are true; they are different metrics, and conflating them is a common source of apparent disagreement.</p>
+<p>Ray-sampling interval is the largest remaining sensitivity. Coarse intervals step over ridges and inflate sunlight; the shipped 160 m interval is the one that scores r = 0.991 against NASA, which is its empirical justification.</p>
 <h2>7. Limitations</h2>
 <ul>
-<li>One coordinate, one hemisphere-season (180 days). A twenty-year baseline would sample</li>
+<li>The LROC image-based product (<code>WAC_POLE_ILL_TWI_SOUTH</code>) was not compared. It is a stronger</li>
 </ul>
-<p>  worse seasons.</p>
+<p>  truth set than altimetry because it records real shadows.</p>
 <ul>
-<li>No comparison against a published figure at the same coordinates and criterion — the</li>
+<li>Permanent-shadow IoU and Earth-visibility comparison are not computed as separate statistics.</li>
+<li>One hemisphere-season (180 days) in the product; the reference spans 18.6 years.</li>
+<li>No thermal, dust or power-system modelling. Array output is first-order.</li>
+<li>Physical libration enters only through the IAU series.</li>
 </ul>
-<p>  papers do not publish per-coordinate tables in machine-readable form.</p>
-<ul>
-<li>Nearest-neighbour ray marching is aliased by construction; the bilinear variant used here</li>
-</ul>
-<p>  reduces but does not eliminate that.</p>
-<ul>
-<li>No thermal, dust, or power-system modelling; no terrain self-shadowing between distant</li>
-</ul>
-<p>  peaks beyond the 64 km march.</p>
 <h2>8. Conclusions</h2>
-<p>1. A lunar polar illumination percentage is only meaningful with its sampling interval,    terrain resolution, observer height, temporal baseline and disc criterion stated. 2. At one south-pole coordinate, varying only the ray-sampling interval moves the answer    between 36.8% and 94.4%. 3. The frame and ephemeris are not the source: they agree with JPL Horizons to 0.0032°. 4. For comparability, adopt the literature convention — any part of the solar disc, converged    interpolation, searched cluster coordinates — and report the shadow-duration statistic,    which is far more stable than the illumination percentage (3.5 days here vs 3–8 days    published).</p>
+<p>1. A browser-resident model, using public terrain and ephemerides, reproduces NASA&#x27;s 18.6-year    polar visibility map to r = 0.995 and 1.4 percentage points RMSE. 2. External validation found a 180° azimuth defect that internal checks and spot checks had    missed. Reference products are worth more than self-consistency. 3. Illumination at a single point remains sensitive to ray interval and site choice; the    number is only meaningful with its convention stated, and the map-wide test is the honest    way to choose that convention.</p>
 <h2>References</h2>
-<p>See <code>research/LITERATURE.md</code> for the annotated source list and quoted passages.</p>
-<h2>Data and code availability</h2>
+<p>See <code>research/LITERATURE.md</code> for the annotated source list with quoted methodology.</p>
+<h2>Reproduction</h2>
 <pre>
-npm run verify     # JPL Horizons: geometry + frame
-npm run bench      # disc, position, azimuth sensitivity
-npm run bench:ray  # sampling-interval study (§5.1)
-</pre>
-<p>Terrain: NASA PDS Geosciences Node, LRO-L-LOLA-4-GDR-V1.0.</p></body></html>
+cd web
+npm run validate   # map-wide comparison (this note&#x27;s §4.1)
+npm run verify     # JPL Horizons
+npm run bench      # §6 first three rows
+npm run bench:ray  # §6 ray interval
+npm run bench:conv # convergence
+</pre></body></html>

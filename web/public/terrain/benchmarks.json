@@ -1,5 +1,5 @@
 {
-  "generated": "2026-11-14T17:51:42.267Z",
+  "generated": "2026-11-15T01:14:08.193Z",
   "window": {
     "days": 180,
     "stepMin": 30,
@@ -13,87 +13,87 @@
   "sites": [
     {
       "site": "Peak near Shackleton",
-      "illumPct": 86.24,
-      "discPct": 85.84,
-      "discDeltaPct": -0.4,
-      "positionShiftSdPct": 0.01,
-      "horizon4degPct": 87.26,
-      "horizonDeltaPct": 1.02
+      "illumPct": 73.12,
+      "discPct": 73.24,
+      "discDeltaPct": 0.12,
+      "positionShiftSdPct": 0.08,
+      "horizon4degPct": 73.36,
+      "horizonDeltaPct": 0.24
     },
     {
       "site": "Connecting Ridge",
-      "illumPct": 51.01,
-      "discPct": 51.2,
-      "discDeltaPct": 0.18,
-      "positionShiftSdPct": 0.04,
-      "horizon4degPct": 51.49,
-      "horizonDeltaPct": 0.47
+      "illumPct": 53.11,
+      "discPct": 52.85,
+      "discDeltaPct": -0.26,
+      "positionShiftSdPct": 0.01,
+      "horizon4degPct": 53.27,
+      "horizonDeltaPct": 0.16
     },
     {
       "site": "de Gerlache Rim",
-      "illumPct": 0.82,
-      "discPct": 0.82,
-      "discDeltaPct": 0,
-      "positionShiftSdPct": 0.01,
-      "horizon4degPct": 0.74,
-      "horizonDeltaPct": -0.08
+      "illumPct": 1.55,
+      "discPct": 1.58,
+      "discDeltaPct": 0.03,
+      "positionShiftSdPct": 0,
+      "horizon4degPct": 1.54,
+      "horizonDeltaPct": -0.01
     },
     {
       "site": "Haworth",
-      "illumPct": 1.27,
-      "discPct": 1.3,
-      "discDeltaPct": 0.03,
-      "positionShiftSdPct": 0.01,
-      "horizon4degPct": 1.27,
+      "illumPct": 0,
+      "discPct": 0,
+      "discDeltaPct": 0,
+      "positionShiftSdPct": 0,
+      "horizon4degPct": 0,
       "horizonDeltaPct": 0
     },
     {
       "site": "Malapert Massif",
-      "illumPct": 56.26,
-      "discPct": 56.21,
-      "discDeltaPct": -0.05,
-      "positionShiftSdPct": 0.02,
-      "horizon4degPct": 56.23,
-      "horizonDeltaPct": -0.02
+      "illumPct": 54.7,
+      "discPct": 54.62,
+      "discDeltaPct": -0.08,
+      "positionShiftSdPct": 0.01,
+      "horizon4degPct": 54.6,
+      "horizonDeltaPct": -0.1
     },
     {
       "site": "Leibnitz Beta Plateau",
-      "illumPct": 36.34,
-      "discPct": 36.29,
-      "discDeltaPct": -0.05,
-      "positionShiftSdPct": 0.02,
-      "horizon4degPct": 36.8,
-      "horizonDeltaPct": 0.46
+      "illumPct": 19.01,
+      "discPct": 18.97,
+      "discDeltaPct": -0.04,
+      "positionShiftSdPct": 0.01,
+      "horizon4degPct": 19.01,
+      "horizonDeltaPct": 0
     },
     {
       "site": "Nobile Rim 1",
-      "illumPct": 21.81,
-      "discPct": 21.9,
-      "discDeltaPct": 0.09,
-      "positionShiftSdPct": 0.01,
-      "horizon4degPct": 21.94,
-      "horizonDeltaPct": 0.13
+      "illumPct": 0.12,
+      "discPct": 0.09,
+      "discDeltaPct": -0.02,
+      "positionShiftSdPct": 0,
+      "horizon4degPct": 0.06,
+      "horizonDeltaPct": -0.06
     },
     {
       "site": "Amundsen Rim",
-      "illumPct": 16.03,
-      "discPct": 16.11,
-      "discDeltaPct": 0.08,
-      "positionShiftSdPct": 0.02,
-      "horizon4degPct": 16.51,
-      "horizonDeltaPct": 0.49
+      "illumPct": 13.16,
+      "discPct": 12.99,
+      "discDeltaPct": -0.16,
+      "positionShiftSdPct": 0.05,
+      "horizon4degPct": 13.25,
+      "horizonDeltaPct": 0.09
     },
     {
       "site": "Cabeus B",
-      "illumPct": 11.93,
-      "discPct": 11.84,
-      "discDeltaPct": -0.09,
-      "positionShiftSdPct": 0.04,
-      "horizon4degPct": 12.02,
-      "horizonDeltaPct": 0.09
+      "illumPct": 8,
+      "discPct": 7.74,
+      "discDeltaPct": -0.25,
+      "positionShiftSdPct": 0.05,
+      "horizon4degPct": 7.82,
+      "horizonDeltaPct": -0.17
     }
   ],
-  "maxDiscDeltaPct": 0.4,
-  "maxPositionShiftSdPct": 0.04,
-  "maxHorizonDeltaPct": 1.02
+  "maxDiscDeltaPct": 0.26,
+  "maxPositionShiftSdPct": 0.08,
+  "maxHorizonDeltaPct": 0.24
 }
